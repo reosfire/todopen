@@ -1,5 +1,6 @@
 import 'package:drift/drift.dart';
 import 'package:drift_flutter/drift_flutter.dart';
+import 'package:flutter/foundation.dart';
 
 part 'app_database.g.dart';
 
@@ -123,8 +124,18 @@ class UiStateEntries extends Table {
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
-  static QueryExecutor _openConnection() =>
-      driftDatabase(name: 'todo_app');
+  static QueryExecutor _openConnection() {
+    if (kIsWeb) {
+      return driftDatabase(
+        name: 'todo_app',
+        web: DriftWebOptions(
+          sqlite3Wasm: Uri.parse('sqlite3.wasm'),
+          driftWorker: Uri.parse('drift_worker.js'),
+        ),
+      );
+    }
+    return driftDatabase(name: 'todo_app');
+  }
 
   @override
   int get schemaVersion => 2;

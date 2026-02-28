@@ -1,6 +1,22 @@
 import 'dart:io';
 import 'package:build/build.dart';
 
+// ─────────────────────────────────────────────────────────────────────────────
+// NOTE: web/drift_worker.js is also a generated file, but it can't go through
+// build_runner because `dart compile js` writes directly to a file path.
+// Recompile it manually after upgrading the `drift` package:
+//
+//   dart compile js -O2 -o web/drift_worker.js \
+//       --packages .dart_tool/package_config.json \
+//       -Dpackage:drift/wasm.dart
+//
+// Shorter version using a one-liner entry point already in the project:
+//   echo "import 'package:drift/wasm.dart'; void main() => WasmDatabase.workerMainForOpen();" \
+//       > web/_worker_entry.dart && \
+//   dart compile js -O2 -o web/drift_worker.js web/_worker_entry.dart && \
+//   rm web/_worker_entry.dart
+// ─────────────────────────────────────────────────────────────────────────────
+
 Builder protoBuilder(BuilderOptions options) => _ProtoBuilder();
 
 class _ProtoBuilder implements Builder {
