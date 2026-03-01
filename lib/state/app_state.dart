@@ -11,8 +11,6 @@ import '../services/storage_service.dart';
 import '../services/dropbox_service.dart';
 import '../services/sync_service.dart';
 import '../services/proto_serializer.dart';
-// MIGRATION-IMPORT: remove after migrating personal data.
-import '../services/json_migration.dart';
 
 const _uuid = Uuid();
 
@@ -709,15 +707,6 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     _syncing = false;
     notifyListeners();
   }
-
-  // ── MIGRATION: remove this method after migrating personal data. ──
-  Future<void> migrateFromJson(String jsonString) async {
-    _data = JsonMigration.fromJsonString(jsonString);
-    _ensureDefaults();
-    await _storage.save(_data);
-    notifyListeners();
-  }
-  // ── END MIGRATION ──
 
   String newId() => _uuid.v4();
 }

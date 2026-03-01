@@ -21,6 +21,7 @@ class ProtoSerializer {
   static DateTime _fromMs(Int64 ms) =>
       DateTime.fromMillisecondsSinceEpoch(ms.toInt());
 
+  /// UUID string → 16 raw bytes.
   static Uint8List _uuidToBytes(String uuid) =>
       Uint8List.fromList(Uuid.parse(uuid));
 
