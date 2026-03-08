@@ -109,12 +109,7 @@ class _HomePageState extends State<HomePage> {
   }
 
   PreferredSizeWidget _buildAppBar(AppState state) {
-    String title = 'Todo';
-    if (_selectedSmartListId != null) {
-      title = state.smartListById(_selectedSmartListId!)?.name ?? 'Todo';
-    } else if (_selectedListId != null) {
-      title = state.listById(_selectedListId!)?.name ?? 'Todo';
-    }
+    String title = _getAppBarTitle(state);
     return AppBar(
       title: Text(title),
       actions: [
@@ -138,12 +133,7 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _buildWideAppBar(AppState state) {
-    String title = 'Todo';
-    if (_selectedSmartListId != null) {
-      title = state.smartListById(_selectedSmartListId!)?.name ?? 'Todo';
-    } else if (_selectedListId != null) {
-      title = state.listById(_selectedListId!)?.name ?? 'Todo';
-    }
+    String title = _getAppBarTitle(state);
     return Container(
       height: 56,
       color: Theme.of(context).colorScheme.surface,
@@ -167,6 +157,17 @@ class _HomePageState extends State<HomePage> {
         ],
       ),
     );
+  }
+
+  String _getAppBarTitle(AppState state) {
+    String defaultTitle = 'Todoonya';
+    if (_selectedSmartListId != null) {
+      return state.smartListById(_selectedSmartListId!)?.name ?? defaultTitle;
+    }
+    if (_selectedListId != null) {
+      return state.listById(_selectedListId!)?.name ?? defaultTitle;
+    }
+    return defaultTitle;
   }
 
   Widget _buildDrawer(AppState state) {

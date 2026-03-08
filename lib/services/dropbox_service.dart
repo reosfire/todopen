@@ -4,7 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:crypto/crypto.dart';
-import 'package:todo/global_constants.dart';
+import 'package:todoonya/global_constants.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'web_auth.dart' as web_auth;
 
@@ -328,7 +328,7 @@ class DropboxService {
     if (kIsWeb) {
       return web_auth.getAppRedirectUri();
     }
-    return 'todoapp://auth';
+    return 'todoonya://auth';
   }
 
   Future<bool> _exchangeCode(String code, String codeVerifier) async {

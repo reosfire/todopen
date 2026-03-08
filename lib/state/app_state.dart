@@ -120,7 +120,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   void _handleIncomingLink(Uri uri) async {
-    if (uri.scheme == 'todoapp' && uri.host == 'auth') {
+    if (uri.scheme == 'todoonya' && uri.host == 'auth') {
       final code = uri.queryParameters['code'];
       if (code != null) {
         final success = await dropboxService.handleRedirectCode(code);

@@ -22,11 +22,11 @@ void clearUrlAuthCode() {
 }
 
 /// Returns the base URL of the app (origin + base path).
-/// https://reosfire.github.io/Todo or http://localhost:8080
+/// https://reosfire.github.io/Todoonya or http://localhost:8080
 String getAppRedirectUri() {
   final origin = web.window.location.origin;
   if (origin.contains("github.io")) {
-    return '$origin/Todo';
+    return '$origin/Todoonya';
   } else {
     return "http://localhost:8080";
   }

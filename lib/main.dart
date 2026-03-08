@@ -8,18 +8,18 @@ void main() {
   runApp(
     ChangeNotifierProvider(
       create: (_) => AppState()..init(),
-      child: const TodoApp(),
+      child: const TodoonyaApp(),
     ),
   );
 }
 
-class TodoApp extends StatelessWidget {
-  const TodoApp({super.key});
+class TodoonyaApp extends StatelessWidget {
+  const TodoonyaApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Todo',
+      title: 'Todoonya',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorSchemeSeed: Colors.blue,

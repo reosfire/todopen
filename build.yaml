@@ -1,6 +1,6 @@
 builders:
   proto:
-    import: "package:todo/builders.dart"
+    import: "package:todoonya/builders.dart"
     builder_factories: ["protoBuilder"]
     build_extensions:
       "proto/{{}}.proto":

@@ -1,4 +1,4 @@
-name: todo
+name: todoonya
 description: "A todo app with Dropbox sync."
 publish_to: 'none'
 version: 0.1.0

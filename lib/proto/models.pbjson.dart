@@ -88,7 +88,7 @@ const ProtoRecurrenceRule$json = {
       '3': 1,
       '4': 1,
       '5': 11,
-      '6': '.todo.ProtoDailyRecurrence',
+      '6': '.todoonya.ProtoDailyRecurrence',
       '9': 0,
       '10': 'daily'
     },
@@ -97,7 +97,7 @@ const ProtoRecurrenceRule$json = {
       '3': 2,
       '4': 1,
       '5': 11,
-      '6': '.todo.ProtoEveryNDaysRecurrence',
+      '6': '.todoonya.ProtoEveryNDaysRecurrence',
       '9': 0,
       '10': 'everyNDays'
     },
@@ -106,7 +106,7 @@ const ProtoRecurrenceRule$json = {
       '3': 3,
       '4': 1,
       '5': 11,
-      '6': '.todo.ProtoWeeklyRecurrence',
+      '6': '.todoonya.ProtoWeeklyRecurrence',
       '9': 0,
       '10': 'weekly'
     },
@@ -115,7 +115,7 @@ const ProtoRecurrenceRule$json = {
       '3': 4,
       '4': 1,
       '5': 11,
-      '6': '.todo.ProtoMonthlyRecurrence',
+      '6': '.todoonya.ProtoMonthlyRecurrence',
       '9': 0,
       '10': 'monthly'
     },
@@ -124,7 +124,7 @@ const ProtoRecurrenceRule$json = {
       '3': 5,
       '4': 1,
       '5': 11,
-      '6': '.todo.ProtoYearlyRecurrence',
+      '6': '.todoonya.ProtoYearlyRecurrence',
       '9': 0,
       '10': 'yearly'
     },
@@ -136,12 +136,13 @@ const ProtoRecurrenceRule$json = {
 
 /// Descriptor for `ProtoRecurrenceRule`. Decode as a `google.protobuf.DescriptorProto`.
 final $typed_data.Uint8List protoRecurrenceRuleDescriptor = $convert.base64Decode(
-    'ChNQcm90b1JlY3VycmVuY2VSdWxlEjIKBWRhaWx5GAEgASgLMhoudG9kby5Qcm90b0RhaWx5Um'
-    'VjdXJyZW5jZUgAUgVkYWlseRJDCgxldmVyeV9uX2RheXMYAiABKAsyHy50b2RvLlByb3RvRXZl'
-    'cnlORGF5c1JlY3VycmVuY2VIAFIKZXZlcnlORGF5cxI1CgZ3ZWVrbHkYAyABKAsyGy50b2RvLl'
-    'Byb3RvV2Vla2x5UmVjdXJyZW5jZUgAUgZ3ZWVrbHkSOAoHbW9udGhseRgEIAEoCzIcLnRvZG8u'
-    'UHJvdG9Nb250aGx5UmVjdXJyZW5jZUgAUgdtb250aGx5EjUKBnllYXJseRgFIAEoCzIbLnRvZG'
-    '8uUHJvdG9ZZWFybHlSZWN1cnJlbmNlSABSBnllYXJseUIGCgRydWxl');
+    'ChNQcm90b1JlY3VycmVuY2VSdWxlEjYKBWRhaWx5GAEgASgLMh4udG9kb29ueWEuUHJvdG9EYW'
+    'lseVJlY3VycmVuY2VIAFIFZGFpbHkSRwoMZXZlcnlfbl9kYXlzGAIgASgLMiMudG9kb29ueWEu'
+    'UHJvdG9FdmVyeU5EYXlzUmVjdXJyZW5jZUgAUgpldmVyeU5EYXlzEjkKBndlZWtseRgDIAEoCz'
+    'IfLnRvZG9vbnlhLlByb3RvV2Vla2x5UmVjdXJyZW5jZUgAUgZ3ZWVrbHkSPAoHbW9udGhseRgE'
+    'IAEoCzIgLnRvZG9vbnlhLlByb3RvTW9udGhseVJlY3VycmVuY2VIAFIHbW9udGhseRI5CgZ5ZW'
+    'FybHkYBSABKAsyHy50b2Rvb255YS5Qcm90b1llYXJseVJlY3VycmVuY2VIAFIGeWVhcmx5QgYK'
+    'BHJ1bGU=');
 
 @$core.Deprecated('Use protoTaskDescriptor instead')
 const ProtoTask$json = {
@@ -158,7 +159,7 @@ const ProtoTask$json = {
       '3': 7,
       '4': 1,
       '5': 11,
-      '6': '.todo.ProtoRecurrenceRule',
+      '6': '.todoonya.ProtoRecurrenceRule',
       '10': 'recurrence'
     },
     {'1': 'tag_ids', '3': 8, '4': 3, '5': 12, '10': 'tagIds'},
@@ -180,11 +181,11 @@ final $typed_data.Uint8List protoTaskDescriptor = $convert.base64Decode(
     'CglQcm90b1Rhc2sSDgoCaWQYASABKAxSAmlkEhQKBXRpdGxlGAIgASgJUgV0aXRsZRIUCgVub3'
     'RlcxgDIAEoCVIFbm90ZXMSIQoMaXNfY29tcGxldGVkGAQgASgIUgtpc0NvbXBsZXRlZBIiCg1j'
     'cmVhdGVkX2F0X21zGAUgASgDUgtjcmVhdGVkQXRNcxIqChFzY2hlZHVsZWRfZGF0ZV9tcxgGIA'
-    'EoA1IPc2NoZWR1bGVkRGF0ZU1zEjkKCnJlY3VycmVuY2UYByABKAsyGS50b2RvLlByb3RvUmVj'
-    'dXJyZW5jZVJ1bGVSCnJlY3VycmVuY2USFwoHdGFnX2lkcxgIIAMoDFIGdGFnSWRzEhcKB2xpc3'
-    'RfaWQYCSABKAxSBmxpc3RJZBIoChBwcmV2aW91c190YXNrX2lkGAogASgMUg5wcmV2aW91c1Rh'
-    'c2tJZBIgCgxuZXh0X3Rhc2tfaWQYCyABKAxSCm5leHRUYXNrSWQSLAoSY29tcGxldGVkX2RhdG'
-    'VzX21zGAwgAygDUhBjb21wbGV0ZWREYXRlc01z');
+    'EoA1IPc2NoZWR1bGVkRGF0ZU1zEj0KCnJlY3VycmVuY2UYByABKAsyHS50b2Rvb255YS5Qcm90'
+    'b1JlY3VycmVuY2VSdWxlUgpyZWN1cnJlbmNlEhcKB3RhZ19pZHMYCCADKAxSBnRhZ0lkcxIXCg'
+    'dsaXN0X2lkGAkgASgMUgZsaXN0SWQSKAoQcHJldmlvdXNfdGFza19pZBgKIAEoDFIOcHJldmlv'
+    'dXNUYXNrSWQSIAoMbmV4dF90YXNrX2lkGAsgASgMUgpuZXh0VGFza0lkEiwKEmNvbXBsZXRlZF'
+    '9kYXRlc19tcxgMIAMoA1IQY29tcGxldGVkRGF0ZXNNcw==');
 
 @$core.Deprecated('Use protoTaskListDescriptor instead')
 const ProtoTaskList$json = {
@@ -327,7 +328,7 @@ const ProtoSmartListFilter$json = {
       '3': 1,
       '4': 1,
       '5': 11,
-      '6': '.todo.ProtoTodayFilter',
+      '6': '.todoonya.ProtoTodayFilter',
       '9': 0,
       '10': 'today'
     },
@@ -336,7 +337,7 @@ const ProtoSmartListFilter$json = {
       '3': 2,
       '4': 1,
       '5': 11,
-      '6': '.todo.ProtoTomorrowFilter',
+      '6': '.todoonya.ProtoTomorrowFilter',
       '9': 0,
       '10': 'tomorrow'
     },
@@ -345,7 +346,7 @@ const ProtoSmartListFilter$json = {
       '3': 3,
       '4': 1,
       '5': 11,
-      '6': '.todo.ProtoUpcomingFilter',
+      '6': '.todoonya.ProtoUpcomingFilter',
       '9': 0,
       '10': 'upcoming'
     },
@@ -354,7 +355,7 @@ const ProtoSmartListFilter$json = {
       '3': 4,
       '4': 1,
       '5': 11,
-      '6': '.todo.ProtoOverdueFilter',
+      '6': '.todoonya.ProtoOverdueFilter',
       '9': 0,
       '10': 'overdue'
     },
@@ -363,7 +364,7 @@ const ProtoSmartListFilter$json = {
       '3': 5,
       '4': 1,
       '5': 11,
-      '6': '.todo.ProtoDateRangeFilter',
+      '6': '.todoonya.ProtoDateRangeFilter',
       '9': 0,
       '10': 'dateRange'
     },
@@ -372,7 +373,7 @@ const ProtoSmartListFilter$json = {
       '3': 6,
       '4': 1,
       '5': 11,
-      '6': '.todo.ProtoTagsFilter',
+      '6': '.todoonya.ProtoTagsFilter',
       '9': 0,
       '10': 'tags'
     },
@@ -381,7 +382,7 @@ const ProtoSmartListFilter$json = {
       '3': 7,
       '4': 1,
       '5': 11,
-      '6': '.todo.ProtoCompletedFilter',
+      '6': '.todoonya.ProtoCompletedFilter',
       '9': 0,
       '10': 'completed'
     },
@@ -390,7 +391,7 @@ const ProtoSmartListFilter$json = {
       '3': 8,
       '4': 1,
       '5': 11,
-      '6': '.todo.ProtoAllTasksFilter',
+      '6': '.todoonya.ProtoAllTasksFilter',
       '9': 0,
       '10': 'all'
     },
@@ -402,15 +403,15 @@ const ProtoSmartListFilter$json = {
 
 /// Descriptor for `ProtoSmartListFilter`. Decode as a `google.protobuf.DescriptorProto`.
 final $typed_data.Uint8List protoSmartListFilterDescriptor = $convert.base64Decode(
-    'ChRQcm90b1NtYXJ0TGlzdEZpbHRlchIuCgV0b2RheRgBIAEoCzIWLnRvZG8uUHJvdG9Ub2RheU'
-    'ZpbHRlckgAUgV0b2RheRI3Cgh0b21vcnJvdxgCIAEoCzIZLnRvZG8uUHJvdG9Ub21vcnJvd0Zp'
-    'bHRlckgAUgh0b21vcnJvdxI3Cgh1cGNvbWluZxgDIAEoCzIZLnRvZG8uUHJvdG9VcGNvbWluZ0'
-    'ZpbHRlckgAUgh1cGNvbWluZxI0CgdvdmVyZHVlGAQgASgLMhgudG9kby5Qcm90b092ZXJkdWVG'
-    'aWx0ZXJIAFIHb3ZlcmR1ZRI7CgpkYXRlX3JhbmdlGAUgASgLMhoudG9kby5Qcm90b0RhdGVSYW'
-    '5nZUZpbHRlckgAUglkYXRlUmFuZ2USKwoEdGFncxgGIAEoCzIVLnRvZG8uUHJvdG9UYWdzRmls'
-    'dGVySABSBHRhZ3MSOgoJY29tcGxldGVkGAcgASgLMhoudG9kby5Qcm90b0NvbXBsZXRlZEZpbH'
-    'RlckgAUgljb21wbGV0ZWQSLQoDYWxsGAggASgLMhkudG9kby5Qcm90b0FsbFRhc2tzRmlsdGVy'
-    'SABSA2FsbEIICgZmaWx0ZXI=');
+    'ChRQcm90b1NtYXJ0TGlzdEZpbHRlchIyCgV0b2RheRgBIAEoCzIaLnRvZG9vbnlhLlByb3RvVG'
+    '9kYXlGaWx0ZXJIAFIFdG9kYXkSOwoIdG9tb3Jyb3cYAiABKAsyHS50b2Rvb255YS5Qcm90b1Rv'
+    'bW9ycm93RmlsdGVySABSCHRvbW9ycm93EjsKCHVwY29taW5nGAMgASgLMh0udG9kb29ueWEuUH'
+    'JvdG9VcGNvbWluZ0ZpbHRlckgAUgh1cGNvbWluZxI4CgdvdmVyZHVlGAQgASgLMhwudG9kb29u'
+    'eWEuUHJvdG9PdmVyZHVlRmlsdGVySABSB292ZXJkdWUSPwoKZGF0ZV9yYW5nZRgFIAEoCzIeLn'
+    'RvZG9vbnlhLlByb3RvRGF0ZVJhbmdlRmlsdGVySABSCWRhdGVSYW5nZRIvCgR0YWdzGAYgASgL'
+    'MhkudG9kb29ueWEuUHJvdG9UYWdzRmlsdGVySABSBHRhZ3MSPgoJY29tcGxldGVkGAcgASgLMh'
+    '4udG9kb29ueWEuUHJvdG9Db21wbGV0ZWRGaWx0ZXJIAFIJY29tcGxldGVkEjEKA2FsbBgIIAEo'
+    'CzIdLnRvZG9vbnlhLlByb3RvQWxsVGFza3NGaWx0ZXJIAFIDYWxsQggKBmZpbHRlcg==');
 
 @$core.Deprecated('Use protoSmartListDescriptor instead')
 const ProtoSmartList$json = {
@@ -425,7 +426,7 @@ const ProtoSmartList$json = {
       '3': 5,
       '4': 1,
       '5': 11,
-      '6': '.todo.ProtoSmartListFilter',
+      '6': '.todoonya.ProtoSmartListFilter',
       '10': 'filter'
     },
   ],
@@ -435,8 +436,8 @@ const ProtoSmartList$json = {
 final $typed_data.Uint8List protoSmartListDescriptor = $convert.base64Decode(
     'Cg5Qcm90b1NtYXJ0TGlzdBIOCgJpZBgBIAEoDFICaWQSEgoEbmFtZRgCIAEoCVIEbmFtZRImCg'
     '9pY29uX2NvZGVfcG9pbnQYAyABKAVSDWljb25Db2RlUG9pbnQSHwoLY29sb3JfdmFsdWUYBCAB'
-    'KAVSCmNvbG9yVmFsdWUSMgoGZmlsdGVyGAUgASgLMhoudG9kby5Qcm90b1NtYXJ0TGlzdEZpbH'
-    'RlclIGZmlsdGVy');
+    'KAVSCmNvbG9yVmFsdWUSNgoGZmlsdGVyGAUgASgLMh4udG9kb29ueWEuUHJvdG9TbWFydExpc3'
+    'RGaWx0ZXJSBmZpbHRlcg==');
 
 @$core.Deprecated('Use protoSyncIndexDescriptor instead')
 const ProtoSyncIndex$json = {
@@ -447,7 +448,7 @@ const ProtoSyncIndex$json = {
       '3': 1,
       '4': 3,
       '5': 11,
-      '6': '.todo.ProtoSyncIndex.EntitiesEntry',
+      '6': '.todoonya.ProtoSyncIndex.EntitiesEntry',
       '10': 'entities'
     },
     {
@@ -455,7 +456,7 @@ const ProtoSyncIndex$json = {
       '3': 2,
       '4': 3,
       '5': 11,
-      '6': '.todo.ProtoSyncIndex.DeletionsEntry',
+      '6': '.todoonya.ProtoSyncIndex.DeletionsEntry',
       '10': 'deletions'
     },
   ],
@@ -484,8 +485,9 @@ const ProtoSyncIndex_DeletionsEntry$json = {
 
 /// Descriptor for `ProtoSyncIndex`. Decode as a `google.protobuf.DescriptorProto`.
 final $typed_data.Uint8List protoSyncIndexDescriptor = $convert.base64Decode(
-    'Cg5Qcm90b1N5bmNJbmRleBI+CghlbnRpdGllcxgBIAMoCzIiLnRvZG8uUHJvdG9TeW5jSW5kZX'
-    'guRW50aXRpZXNFbnRyeVIIZW50aXRpZXMSQQoJZGVsZXRpb25zGAIgAygLMiMudG9kby5Qcm90'
-    'b1N5bmNJbmRleC5EZWxldGlvbnNFbnRyeVIJZGVsZXRpb25zGjsKDUVudGl0aWVzRW50cnkSEA'
-    'oDa2V5GAEgASgJUgNrZXkSFAoFdmFsdWUYAiABKANSBXZhbHVlOgI4ARo8Cg5EZWxldGlvbnNF'
-    'bnRyeRIQCgNrZXkYASABKAlSA2tleRIUCgV2YWx1ZRgCIAEoA1IFdmFsdWU6AjgB');
+    'Cg5Qcm90b1N5bmNJbmRleBJCCghlbnRpdGllcxgBIAMoCzImLnRvZG9vbnlhLlByb3RvU3luY0'
+    'luZGV4LkVudGl0aWVzRW50cnlSCGVudGl0aWVzEkUKCWRlbGV0aW9ucxgCIAMoCzInLnRvZG9v'
+    'bnlhLlByb3RvU3luY0luZGV4LkRlbGV0aW9uc0VudHJ5UglkZWxldGlvbnMaOwoNRW50aXRpZX'
+    'NFbnRyeRIQCgNrZXkYASABKAlSA2tleRIUCgV2YWx1ZRgCIAEoA1IFdmFsdWU6AjgBGjwKDkRl'
+    'bGV0aW9uc0VudHJ5EhAKA2tleRgBIAEoCVIDa2V5EhQKBXZhbHVlGAIgASgDUgV2YWx1ZToCOA'
+    'E=');

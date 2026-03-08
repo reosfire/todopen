@@ -31,7 +31,7 @@ class ProtoDailyRecurrence extends $pb.GeneratedMessage {
 
   static final $pb.BuilderInfo _i = $pb.BuilderInfo(
       _omitMessageNames ? '' : 'ProtoDailyRecurrence',
-      package: const $pb.PackageName(_omitMessageNames ? '' : 'todo'),
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'todoonya'),
       createEmptyInstance: create)
     ..hasRequiredFields = false;
 
@@ -75,7 +75,7 @@ class ProtoEveryNDaysRecurrence extends $pb.GeneratedMessage {
 
   static final $pb.BuilderInfo _i = $pb.BuilderInfo(
       _omitMessageNames ? '' : 'ProtoEveryNDaysRecurrence',
-      package: const $pb.PackageName(_omitMessageNames ? '' : 'todo'),
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'todoonya'),
       createEmptyInstance: create)
     ..aI(1, _omitFieldNames ? '' : 'interval')
     ..hasRequiredFields = false;
@@ -130,7 +130,7 @@ class ProtoWeeklyRecurrence extends $pb.GeneratedMessage {
 
   static final $pb.BuilderInfo _i = $pb.BuilderInfo(
       _omitMessageNames ? '' : 'ProtoWeeklyRecurrence',
-      package: const $pb.PackageName(_omitMessageNames ? '' : 'todo'),
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'todoonya'),
       createEmptyInstance: create)
     ..aI(1, _omitFieldNames ? '' : 'weekdayBits', protoName: 'weekdayBits')
     ..hasRequiredFields = false;
@@ -185,7 +185,7 @@ class ProtoMonthlyRecurrence extends $pb.GeneratedMessage {
 
   static final $pb.BuilderInfo _i = $pb.BuilderInfo(
       _omitMessageNames ? '' : 'ProtoMonthlyRecurrence',
-      package: const $pb.PackageName(_omitMessageNames ? '' : 'todo'),
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'todoonya'),
       createEmptyInstance: create)
     ..aI(1, _omitFieldNames ? '' : 'dayOfMonth')
     ..hasRequiredFields = false;
@@ -242,7 +242,7 @@ class ProtoYearlyRecurrence extends $pb.GeneratedMessage {
 
   static final $pb.BuilderInfo _i = $pb.BuilderInfo(
       _omitMessageNames ? '' : 'ProtoYearlyRecurrence',
-      package: const $pb.PackageName(_omitMessageNames ? '' : 'todo'),
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'todoonya'),
       createEmptyInstance: create)
     ..aI(1, _omitFieldNames ? '' : 'month')
     ..aI(2, _omitFieldNames ? '' : 'dayOfMonth')
@@ -333,7 +333,7 @@ class ProtoRecurrenceRule extends $pb.GeneratedMessage {
   };
   static final $pb.BuilderInfo _i = $pb.BuilderInfo(
       _omitMessageNames ? '' : 'ProtoRecurrenceRule',
-      package: const $pb.PackageName(_omitMessageNames ? '' : 'todo'),
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'todoonya'),
       createEmptyInstance: create)
     ..oo(0, [1, 2, 3, 4, 5])
     ..aOM<ProtoDailyRecurrence>(1, _omitFieldNames ? '' : 'daily',
@@ -480,7 +480,7 @@ class ProtoTask extends $pb.GeneratedMessage {
 
   static final $pb.BuilderInfo _i = $pb.BuilderInfo(
       _omitMessageNames ? '' : 'ProtoTask',
-      package: const $pb.PackageName(_omitMessageNames ? '' : 'todo'),
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'todoonya'),
       createEmptyInstance: create)
     ..a<$core.List<$core.int>>(
         1, _omitFieldNames ? '' : 'id', $pb.PbFieldType.OY)
@@ -652,7 +652,7 @@ class ProtoTaskList extends $pb.GeneratedMessage {
 
   static final $pb.BuilderInfo _i = $pb.BuilderInfo(
       _omitMessageNames ? '' : 'ProtoTaskList',
-      package: const $pb.PackageName(_omitMessageNames ? '' : 'todo'),
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'todoonya'),
       createEmptyInstance: create)
     ..a<$core.List<$core.int>>(
         1, _omitFieldNames ? '' : 'id', $pb.PbFieldType.OY)
@@ -764,7 +764,7 @@ class ProtoFolder extends $pb.GeneratedMessage {
 
   static final $pb.BuilderInfo _i = $pb.BuilderInfo(
       _omitMessageNames ? '' : 'ProtoFolder',
-      package: const $pb.PackageName(_omitMessageNames ? '' : 'todo'),
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'todoonya'),
       createEmptyInstance: create)
     ..a<$core.List<$core.int>>(
         1, _omitFieldNames ? '' : 'id', $pb.PbFieldType.OY)
@@ -843,7 +843,7 @@ class ProtoTag extends $pb.GeneratedMessage {
 
   static final $pb.BuilderInfo _i = $pb.BuilderInfo(
       _omitMessageNames ? '' : 'ProtoTag',
-      package: const $pb.PackageName(_omitMessageNames ? '' : 'todo'),
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'todoonya'),
       createEmptyInstance: create)
     ..a<$core.List<$core.int>>(
         1, _omitFieldNames ? '' : 'id', $pb.PbFieldType.OY)
@@ -911,7 +911,7 @@ class ProtoTodayFilter extends $pb.GeneratedMessage {
 
   static final $pb.BuilderInfo _i = $pb.BuilderInfo(
       _omitMessageNames ? '' : 'ProtoTodayFilter',
-      package: const $pb.PackageName(_omitMessageNames ? '' : 'todo'),
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'todoonya'),
       createEmptyInstance: create)
     ..hasRequiredFields = false;
 
@@ -949,7 +949,7 @@ class ProtoTomorrowFilter extends $pb.GeneratedMessage {
 
   static final $pb.BuilderInfo _i = $pb.BuilderInfo(
       _omitMessageNames ? '' : 'ProtoTomorrowFilter',
-      package: const $pb.PackageName(_omitMessageNames ? '' : 'todo'),
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'todoonya'),
       createEmptyInstance: create)
     ..hasRequiredFields = false;
 
@@ -987,7 +987,7 @@ class ProtoUpcomingFilter extends $pb.GeneratedMessage {
 
   static final $pb.BuilderInfo _i = $pb.BuilderInfo(
       _omitMessageNames ? '' : 'ProtoUpcomingFilter',
-      package: const $pb.PackageName(_omitMessageNames ? '' : 'todo'),
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'todoonya'),
       createEmptyInstance: create)
     ..hasRequiredFields = false;
 
@@ -1025,7 +1025,7 @@ class ProtoOverdueFilter extends $pb.GeneratedMessage {
 
   static final $pb.BuilderInfo _i = $pb.BuilderInfo(
       _omitMessageNames ? '' : 'ProtoOverdueFilter',
-      package: const $pb.PackageName(_omitMessageNames ? '' : 'todo'),
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'todoonya'),
       createEmptyInstance: create)
     ..hasRequiredFields = false;
 
@@ -1063,7 +1063,7 @@ class ProtoCompletedFilter extends $pb.GeneratedMessage {
 
   static final $pb.BuilderInfo _i = $pb.BuilderInfo(
       _omitMessageNames ? '' : 'ProtoCompletedFilter',
-      package: const $pb.PackageName(_omitMessageNames ? '' : 'todo'),
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'todoonya'),
       createEmptyInstance: create)
     ..hasRequiredFields = false;
 
@@ -1101,7 +1101,7 @@ class ProtoAllTasksFilter extends $pb.GeneratedMessage {
 
   static final $pb.BuilderInfo _i = $pb.BuilderInfo(
       _omitMessageNames ? '' : 'ProtoAllTasksFilter',
-      package: const $pb.PackageName(_omitMessageNames ? '' : 'todo'),
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'todoonya'),
       createEmptyInstance: create)
     ..hasRequiredFields = false;
 
@@ -1151,7 +1151,7 @@ class ProtoDateRangeFilter extends $pb.GeneratedMessage {
 
   static final $pb.BuilderInfo _i = $pb.BuilderInfo(
       _omitMessageNames ? '' : 'ProtoDateRangeFilter',
-      package: const $pb.PackageName(_omitMessageNames ? '' : 'todo'),
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'todoonya'),
       createEmptyInstance: create)
     ..aOB(1, _omitFieldNames ? '' : 'hasDateFrom')
     ..aInt64(2, _omitFieldNames ? '' : 'dateFromMs')
@@ -1235,7 +1235,7 @@ class ProtoTagsFilter extends $pb.GeneratedMessage {
 
   static final $pb.BuilderInfo _i = $pb.BuilderInfo(
       _omitMessageNames ? '' : 'ProtoTagsFilter',
-      package: const $pb.PackageName(_omitMessageNames ? '' : 'todo'),
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'todoonya'),
       createEmptyInstance: create)
     ..p<$core.List<$core.int>>(
         1, _omitFieldNames ? '' : 'tagIds', $pb.PbFieldType.PY)
@@ -1322,7 +1322,7 @@ class ProtoSmartListFilter extends $pb.GeneratedMessage {
   };
   static final $pb.BuilderInfo _i = $pb.BuilderInfo(
       _omitMessageNames ? '' : 'ProtoSmartListFilter',
-      package: const $pb.PackageName(_omitMessageNames ? '' : 'todo'),
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'todoonya'),
       createEmptyInstance: create)
     ..oo(0, [1, 2, 3, 4, 5, 6, 7, 8])
     ..aOM<ProtoTodayFilter>(1, _omitFieldNames ? '' : 'today',
@@ -1499,7 +1499,7 @@ class ProtoSmartList extends $pb.GeneratedMessage {
 
   static final $pb.BuilderInfo _i = $pb.BuilderInfo(
       _omitMessageNames ? '' : 'ProtoSmartList',
-      package: const $pb.PackageName(_omitMessageNames ? '' : 'todo'),
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'todoonya'),
       createEmptyInstance: create)
     ..a<$core.List<$core.int>>(
         1, _omitFieldNames ? '' : 'id', $pb.PbFieldType.OY)
@@ -1599,18 +1599,18 @@ class ProtoSyncIndex extends $pb.GeneratedMessage {
 
   static final $pb.BuilderInfo _i = $pb.BuilderInfo(
       _omitMessageNames ? '' : 'ProtoSyncIndex',
-      package: const $pb.PackageName(_omitMessageNames ? '' : 'todo'),
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'todoonya'),
       createEmptyInstance: create)
     ..m<$core.String, $fixnum.Int64>(1, _omitFieldNames ? '' : 'entities',
         entryClassName: 'ProtoSyncIndex.EntitiesEntry',
         keyFieldType: $pb.PbFieldType.OS,
         valueFieldType: $pb.PbFieldType.O6,
-        packageName: const $pb.PackageName('todo'))
+        packageName: const $pb.PackageName('todoonya'))
     ..m<$core.String, $fixnum.Int64>(2, _omitFieldNames ? '' : 'deletions',
         entryClassName: 'ProtoSyncIndex.DeletionsEntry',
         keyFieldType: $pb.PbFieldType.OS,
         valueFieldType: $pb.PbFieldType.O6,
-        packageName: const $pb.PackageName('todo'))
+        packageName: const $pb.PackageName('todoonya'))
     ..hasRequiredFields = false;
 
   @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
