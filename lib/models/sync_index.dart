@@ -9,9 +9,7 @@ class SyncIndex {
   /// Entity key → deletion timestamp.
   Map<String, DateTime> deletions;
 
-  SyncIndex({
-    Map<String, DateTime>? entities,
-    Map<String, DateTime>? deletions,
-  })  : entities = entities ?? {},
-        deletions = deletions ?? {};
+  SyncIndex({Map<String, DateTime>? entities, Map<String, DateTime>? deletions})
+    : entities = entities ?? {},
+      deletions = deletions ?? {};
 }

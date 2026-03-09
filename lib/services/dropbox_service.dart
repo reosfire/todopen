@@ -101,8 +101,10 @@ class DropboxService {
     late http.Response response;
     for (var attempt = 0; attempt <= _maxRetries; attempt++) {
       if (attempt > 0) {
-        final baseDelay = (_initialDelayMs * (1 << (attempt - 1)))
-            .clamp(0, _maxDelayMs);
+        final baseDelay = (_initialDelayMs * (1 << (attempt - 1))).clamp(
+          0,
+          _maxDelayMs,
+        );
         final jitter = (baseDelay * 0.25 * (2 * _rng.nextDouble() - 1)).round();
         final delay = (baseDelay + jitter).clamp(0, _maxDelayMs);
         await Future.delayed(Duration(milliseconds: delay));
@@ -287,9 +289,7 @@ class DropboxService {
             headers: {'Content-Type': 'application/json'},
             body: jsonEncode({'cursor': cursor, 'timeout': timeout}),
           )
-          .timeout(
-            Duration(seconds: timeout + 120),
-          );
+          .timeout(Duration(seconds: timeout + 120));
 
       if (response.statusCode != 200) {
         debugPrint(

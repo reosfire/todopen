@@ -12,14 +12,8 @@ class TaskListView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
-    final pending = state.tasksForListOrdered(
-      listId,
-      completedSection: false,
-    );
-    final completed = state.tasksForListOrdered(
-      listId,
-      completedSection: true,
-    );
+    final pending = state.tasksForListOrdered(listId, completedSection: false);
+    final completed = state.tasksForListOrdered(listId, completedSection: true);
 
     return SectionedTaskList(
       sections: [

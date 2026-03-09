@@ -202,41 +202,41 @@ class _HomePageState extends State<HomePage> {
                   );
                 }),
                 // User-created smart lists
-                ...state.smartLists.map(
-                  (sl) {
-                    final count = sl.filter.countTasks(state.tasks);
-                    return _HoverTrailingTile(
-                      child: (isHovered) => ListTile(
-                        leading: Icon(sl.icon, color: sl.color),
-                        title: Text(sl.name),
-                        trailing: SizedBox(
-                          width: 32,
-                          height: 32,
-                          child: isHovered
-                              ? IconButton(
-                                  icon: const Icon(Icons.more_horiz, size: 18),
-                                  onPressed: () =>
-                                      _showSmartListMenu(context, state, sl),
-                                  padding: EdgeInsets.zero,
-                                  constraints: const BoxConstraints.tightFor(width: 32, height: 32),
-                                  visualDensity: VisualDensity.compact,
-                                )
-                              : count > 0
-                                  ? Text(
-                                      '$count',
-                                      style:
-                                          Theme.of(context).textTheme.bodySmall,
-                                      textAlign: TextAlign.center,
-                                    )
-                                  : const SizedBox.shrink(),
-                        ),
-                        selected: _selectedSmartListId == sl.id,
-                        onTap: () => _selectSmartList(sl.id),
-                        dense: true,
+                ...state.smartLists.map((sl) {
+                  final count = sl.filter.countTasks(state.tasks);
+                  return _HoverTrailingTile(
+                    child: (isHovered) => ListTile(
+                      leading: Icon(sl.icon, color: sl.color),
+                      title: Text(sl.name),
+                      trailing: SizedBox(
+                        width: 32,
+                        height: 32,
+                        child: isHovered
+                            ? IconButton(
+                                icon: const Icon(Icons.more_horiz, size: 18),
+                                onPressed: () =>
+                                    _showSmartListMenu(context, state, sl),
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints.tightFor(
+                                  width: 32,
+                                  height: 32,
+                                ),
+                                visualDensity: VisualDensity.compact,
+                              )
+                            : count > 0
+                            ? Text(
+                                '$count',
+                                style: Theme.of(context).textTheme.bodySmall,
+                                textAlign: TextAlign.center,
+                              )
+                            : const SizedBox.shrink(),
                       ),
-                    );
-                  },
-                ),
+                      selected: _selectedSmartListId == sl.id,
+                      onTap: () => _selectSmartList(sl.id),
+                      dense: true,
+                    ),
+                  );
+                }),
                 ListTile(
                   leading: const Icon(Icons.add, size: 20),
                   title: const Text('Add Smart List'),
@@ -357,7 +357,10 @@ class _HomePageState extends State<HomePage> {
                     icon: const Icon(Icons.more_horiz, size: 18),
                     onPressed: () => _showFolderMenu(context, state, folder),
                     padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints.tightFor(width: 32, height: 32),
+                    constraints: const BoxConstraints.tightFor(
+                      width: 32,
+                      height: 32,
+                    ),
                     visualDensity: VisualDensity.compact,
                   )
                 : folderListCount > 0
@@ -499,7 +502,10 @@ class _HomePageState extends State<HomePage> {
                   icon: const Icon(Icons.more_horiz, size: 18),
                   onPressed: () => _showListMenu(context, state, list),
                   padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints.tightFor(width: 32, height: 32),
+                  constraints: const BoxConstraints.tightFor(
+                    width: 32,
+                    height: 32,
+                  ),
                   visualDensity: VisualDensity.compact,
                 )
               : count > 0
@@ -569,8 +575,7 @@ class _HomePageState extends State<HomePage> {
             ),
             ListTile(
               leading: const Icon(Icons.delete, color: Colors.red),
-              title:
-                  const Text('Delete', style: TextStyle(color: Colors.red)),
+              title: const Text('Delete', style: TextStyle(color: Colors.red)),
               onTap: () {
                 Navigator.pop(ctx);
                 state.deleteSmartList(sl.id);

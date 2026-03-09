@@ -125,18 +125,22 @@ class SyncService {
       try {
         // 1. Upload / delete each entity file (in parallel).
         await _runParallel(
-          batch.entries.map((entry) => () async {
-            if (entry.value != null) {
-              await _dropbox.uploadBinaryFile(
-                '/${entry.key}.bin',
-                entry.value!,
-              );
-            } else {
-              try {
-                await _dropbox.deleteFile('/${entry.key}.bin');
-              } catch (_) {}
-            }
-          }).toList(),
+          batch.entries
+              .map(
+                (entry) => () async {
+                  if (entry.value != null) {
+                    await _dropbox.uploadBinaryFile(
+                      '/${entry.key}.bin',
+                      entry.value!,
+                    );
+                  } else {
+                    try {
+                      await _dropbox.deleteFile('/${entry.key}.bin');
+                    } catch (_) {}
+                  }
+                },
+              )
+              .toList(),
           maxConcurrency: _maxUploadConcurrency,
         );
 
@@ -266,18 +270,21 @@ class SyncService {
       }
     }
     await _runParallel(
-      List.generate(toUpload.length, (i) => () async {
-        try {
-          await _dropbox.uploadBinaryFile(
-            '/${toUpload[i].key}.bin',
-            toUploadBytes[i],
-          );
-          remoteIndex.entities[toUpload[i].key] = toUpload[i].value;
-          remoteIndex.deletions.remove(toUpload[i].key);
-        } catch (e) {
-          debugPrint('Error uploading ${toUpload[i].key}: $e');
-        }
-      }),
+      List.generate(
+        toUpload.length,
+        (i) => () async {
+          try {
+            await _dropbox.uploadBinaryFile(
+              '/${toUpload[i].key}.bin',
+              toUploadBytes[i],
+            );
+            remoteIndex.entities[toUpload[i].key] = toUpload[i].value;
+            remoteIndex.deletions.remove(toUpload[i].key);
+          } catch (e) {
+            debugPrint('Error uploading ${toUpload[i].key}: $e');
+          }
+        },
+      ),
       maxConcurrency: _maxUploadConcurrency,
     );
 
@@ -290,13 +297,17 @@ class SyncService {
       }
     }
     await _runParallel(
-      toDelete.map((entry) => () async {
-        try {
-          await _dropbox.deleteFile('/${entry.key}.bin');
-        } catch (_) {}
-        remoteIndex.entities.remove(entry.key);
-        remoteIndex.deletions[entry.key] = entry.value;
-      }).toList(),
+      toDelete
+          .map(
+            (entry) => () async {
+              try {
+                await _dropbox.deleteFile('/${entry.key}.bin');
+              } catch (_) {}
+              remoteIndex.entities.remove(entry.key);
+              remoteIndex.deletions[entry.key] = entry.value;
+            },
+          )
+          .toList(),
       maxConcurrency: _maxUploadConcurrency,
     );
 
@@ -397,12 +408,16 @@ class SyncService {
     }
 
     await _runParallel(
-      entries.map((e) => () async {
-        final (key, bytes) = e;
-        await _dropbox.uploadBinaryFile('/$key.bin', bytes);
-        remoteIndex.entities[key] = now;
-        _localIndex.entities[key] = now;
-      }).toList(),
+      entries
+          .map(
+            (e) => () async {
+              final (key, bytes) = e;
+              await _dropbox.uploadBinaryFile('/$key.bin', bytes);
+              remoteIndex.entities[key] = now;
+              _localIndex.entities[key] = now;
+            },
+          )
+          .toList(),
       maxConcurrency: _maxUploadConcurrency,
     );
 
@@ -437,23 +452,43 @@ class SyncService {
       case 'tasks':
         final entity = ProtoSerializer.taskFromBytes(bytes);
         final idx = data.tasks.indexWhere((t) => t.id == entity.id);
-        if (idx >= 0) { data.tasks[idx] = entity; } else { data.tasks.add(entity); }
+        if (idx >= 0) {
+          data.tasks[idx] = entity;
+        } else {
+          data.tasks.add(entity);
+        }
       case 'lists':
         final entity = ProtoSerializer.listFromBytes(bytes);
         final idx = data.lists.indexWhere((l) => l.id == entity.id);
-        if (idx >= 0) { data.lists[idx] = entity; } else { data.lists.add(entity); }
+        if (idx >= 0) {
+          data.lists[idx] = entity;
+        } else {
+          data.lists.add(entity);
+        }
       case 'folders':
         final entity = ProtoSerializer.folderFromBytes(bytes);
         final idx = data.folders.indexWhere((f) => f.id == entity.id);
-        if (idx >= 0) { data.folders[idx] = entity; } else { data.folders.add(entity); }
+        if (idx >= 0) {
+          data.folders[idx] = entity;
+        } else {
+          data.folders.add(entity);
+        }
       case 'tags':
         final entity = ProtoSerializer.tagFromBytes(bytes);
         final idx = data.tags.indexWhere((t) => t.id == entity.id);
-        if (idx >= 0) { data.tags[idx] = entity; } else { data.tags.add(entity); }
+        if (idx >= 0) {
+          data.tags[idx] = entity;
+        } else {
+          data.tags.add(entity);
+        }
       case 'smart_lists':
         final entity = ProtoSerializer.smartListFromBytes(bytes);
         final idx = data.smartLists.indexWhere((s) => s.id == entity.id);
-        if (idx >= 0) { data.smartLists[idx] = entity; } else { data.smartLists.add(entity); }
+        if (idx >= 0) {
+          data.smartLists[idx] = entity;
+        } else {
+          data.smartLists.add(entity);
+        }
     }
   }
 
@@ -483,19 +518,24 @@ class SyncService {
       switch (type) {
         case 'tasks':
           return ProtoSerializer.taskToBytes(
-              data.tasks.firstWhere((t) => t.id == id));
+            data.tasks.firstWhere((t) => t.id == id),
+          );
         case 'lists':
           return ProtoSerializer.listToBytes(
-              data.lists.firstWhere((l) => l.id == id));
+            data.lists.firstWhere((l) => l.id == id),
+          );
         case 'folders':
           return ProtoSerializer.folderToBytes(
-              data.folders.firstWhere((f) => f.id == id));
+            data.folders.firstWhere((f) => f.id == id),
+          );
         case 'tags':
           return ProtoSerializer.tagToBytes(
-              data.tags.firstWhere((t) => t.id == id));
+            data.tags.firstWhere((t) => t.id == id),
+          );
         case 'smart_lists':
           return ProtoSerializer.smartListToBytes(
-              data.smartLists.firstWhere((s) => s.id == id));
+            data.smartLists.firstWhere((s) => s.id == id),
+          );
         default:
           return null;
       }
@@ -618,7 +658,8 @@ class SyncService {
   }) async {
     if (keys.isEmpty) return [];
 
-    final useZip = keys.length >= _zipAbsoluteThreshold ||
+    final useZip =
+        keys.length >= _zipAbsoluteThreshold ||
         (totalRemoteEntities > 0 &&
             keys.length / totalRemoteEntities >= _zipRatioThreshold);
 
@@ -698,7 +739,7 @@ class SyncService {
           }
           if (path.endsWith('.bin')) {
             final id = path.substring(0, path.length - 4); // e.g. abc
-            final key = '${_entityFolders[fi]}/$id';        // e.g. tasks/abc
+            final key = '${_entityFolders[fi]}/$id'; // e.g. tasks/abc
             contents[key] = Uint8List.fromList(file.content as List<int>);
           }
         }

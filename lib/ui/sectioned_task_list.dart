@@ -340,10 +340,9 @@ class _TaskTileState extends State<TaskTile> {
                     index: widget.index,
                     child: Icon(
                       Icons.drag_handle_rounded,
-                      color: Theme.of(context)
-                          .colorScheme
-                          .onSurfaceVariant
-                          .withValues(alpha: 0.7),
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
                     ),
                   ),
                   const SizedBox(width: 4),
@@ -376,8 +375,7 @@ class _TaskTileState extends State<TaskTile> {
                 : Text(
                     task.title,
                     style: TextStyle(
-                      decoration:
-                          completed ? TextDecoration.lineThrough : null,
+                      decoration: completed ? TextDecoration.lineThrough : null,
                       color: completed
                           ? Theme.of(context).colorScheme.onSurfaceVariant
                           : null,
@@ -393,9 +391,8 @@ class _TaskTileState extends State<TaskTile> {
                     child: Text(
                       DateFormat.MMMd().format(task.scheduledDate!),
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color:
-                                Theme.of(context).colorScheme.onSurfaceVariant,
-                          ),
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
                     ),
                   ),
                 if (isRecurring)
@@ -404,10 +401,9 @@ class _TaskTileState extends State<TaskTile> {
                     child: Icon(
                       Icons.repeat,
                       size: widget.reorderable ? 20 : 16,
-                      color: Theme.of(context)
-                          .colorScheme
-                          .onSurfaceVariant
-                          .withValues(alpha: 0.7),
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
                     ),
                   ),
                 IconButton(
@@ -418,8 +414,9 @@ class _TaskTileState extends State<TaskTile> {
                   onPressed: () {
                     final RenderBox button =
                         context.findRenderObject() as RenderBox;
-                    final Offset buttonPosition =
-                        button.localToGlobal(Offset.zero);
+                    final Offset buttonPosition = button.localToGlobal(
+                      Offset.zero,
+                    );
                     _showEditDialog(
                       context,
                       Offset(
@@ -435,8 +432,7 @@ class _TaskTileState extends State<TaskTile> {
               if (widget.reorderable && !_isEditing) {
                 _startEditing();
               } else if (!widget.reorderable) {
-                final RenderBox box =
-                    context.findRenderObject() as RenderBox;
+                final RenderBox box = context.findRenderObject() as RenderBox;
                 final pos = box.localToGlobal(Offset.zero);
                 _showEditDialog(
                   context,
@@ -462,10 +458,9 @@ class _TaskTileState extends State<TaskTile> {
         parts.add(
           Text(
             listName,
-            style: Theme.of(context)
-                .textTheme
-                .bodySmall
-                ?.copyWith(fontStyle: FontStyle.italic),
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(fontStyle: FontStyle.italic),
           ),
         );
       }
@@ -482,8 +477,7 @@ class _TaskTileState extends State<TaskTile> {
               color: t!.color.withValues(alpha: 0.2),
               borderRadius: BorderRadius.circular(4),
             ),
-            child:
-                Text(t.name, style: TextStyle(fontSize: 11, color: t.color)),
+            child: Text(t.name, style: TextStyle(fontSize: 11, color: t.color)),
           ),
         )
         .toList();

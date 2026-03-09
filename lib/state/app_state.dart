@@ -154,52 +154,55 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
 
   /// Get tasks for a list in their linked-list order.
   /// [completedSection] determines whether to return completed or pending tasks.
-  List<Task> tasksForListOrdered(String listId, {required bool completedSection}) {
-    final allTasks = tasksForList(listId)
-        .where((t) => t.isCompleted == completedSection)
-        .toList();
-    
+  List<Task> tasksForListOrdered(
+    String listId, {
+    required bool completedSection,
+  }) {
+    final allTasks = tasksForList(
+      listId,
+    ).where((t) => t.isCompleted == completedSection).toList();
+
     if (allTasks.isEmpty) return [];
-    
+
     // Build a map for quick lookup.
     final taskMap = {for (var t in allTasks) t.id: t};
-    
+
     // Find the head (first task with no previous).
     Task? head;
     for (var task in allTasks) {
-      if (task.previousTaskId == null || 
+      if (task.previousTaskId == null ||
           !taskMap.containsKey(task.previousTaskId)) {
         head = task;
         break;
       }
     }
-    
+
     // If no clear head found (e.g., cycle or orphaned tasks), fall back to creation time.
     if (head == null) {
       return allTasks..sort((a, b) => b.createdAt.compareTo(a.createdAt));
     }
-    
+
     // Traverse the linked list from head.
     final ordered = <Task>[];
     Task? current = head;
     final visited = <String>{};
-    
+
     while (current != null && !visited.contains(current.id)) {
       ordered.add(current);
       visited.add(current.id);
-      
+
       final nextId = current.nextTaskId;
       if (nextId == null || !taskMap.containsKey(nextId)) break;
       current = taskMap[nextId]!;
     }
-    
+
     // Include any orphaned tasks at the end (tasks not in the chain).
     for (var task in allTasks) {
       if (!visited.contains(task.id)) {
         ordered.add(task);
       }
     }
-    
+
     return ordered;
   }
 
@@ -207,24 +210,22 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   /// This is simpler than trying to surgically update pointers during reorder.
   Future<void> rebuildLinkedListForTasks(List<Task> orderedTasks) async {
     if (orderedTasks.isEmpty) return;
-    
+
     final updates = <Task>[];
-    
+
     for (var i = 0; i < orderedTasks.length; i++) {
       final task = orderedTasks[i];
       final prevId = i > 0 ? orderedTasks[i - 1].id : null;
-      final nextId = i < orderedTasks.length - 1 ? orderedTasks[i + 1].id : null;
-      
+      final nextId = i < orderedTasks.length - 1
+          ? orderedTasks[i + 1].id
+          : null;
+
       // Only update if the pointers actually changed
       if (task.previousTaskId != prevId || task.nextTaskId != nextId) {
-        updates.add(copyTask(
-          task,
-          previousTaskId: prevId,
-          nextTaskId: nextId,
-        ));
+        updates.add(copyTask(task, previousTaskId: prevId, nextTaskId: nextId));
       }
     }
-    
+
     if (updates.isNotEmpty) {
       await updateTasks(updates);
     }
@@ -237,15 +238,13 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   Future<void> reorderTask(Task task, Task? newPrevious, Task? newNext) async {
     // Track which tasks need updates and what their new links should be.
     final taskUpdates = <String, ({String? prev, String? next})>{};
-    
+
     // 1. Remove task from its current position.
-    final oldPrev = task.previousTaskId != null 
-        ? taskById(task.previousTaskId!) 
+    final oldPrev = task.previousTaskId != null
+        ? taskById(task.previousTaskId!)
         : null;
-    final oldNext = task.nextTaskId != null 
-        ? taskById(task.nextTaskId!) 
-        : null;
-    
+    final oldNext = task.nextTaskId != null ? taskById(task.nextTaskId!) : null;
+
     // Unlink old neighbors from the moved task.
     if (oldPrev != null) {
       taskUpdates[oldPrev.id] = (
@@ -254,18 +253,12 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
       );
     }
     if (oldNext != null) {
-      taskUpdates[oldNext.id] = (
-        prev: oldPrev?.id,
-        next: oldNext.nextTaskId,
-      );
+      taskUpdates[oldNext.id] = (prev: oldPrev?.id, next: oldNext.nextTaskId);
     }
-    
+
     // 2. Insert task at new position.
-    taskUpdates[task.id] = (
-      prev: newPrevious?.id,
-      next: newNext?.id,
-    );
-    
+    taskUpdates[task.id] = (prev: newPrevious?.id, next: newNext?.id);
+
     // Link new neighbors to the moved task.
     if (newPrevious != null) {
       // If newPrevious was already updated (e.g., it was oldNext), merge the updates.
@@ -282,20 +275,22 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
         next: existing?.next ?? newNext.nextTaskId,
       );
     }
-    
+
     // Build final task updates from the map.
     final updates = <Task>[];
     for (final entry in taskUpdates.entries) {
       final originalTask = taskById(entry.key);
       if (originalTask == null) continue;
-      
-      updates.add(copyTask(
-        originalTask,
-        previousTaskId: entry.value.prev,
-        nextTaskId: entry.value.next,
-      ));
+
+      updates.add(
+        copyTask(
+          originalTask,
+          previousTaskId: entry.value.prev,
+          nextTaskId: entry.value.next,
+        ),
+      );
     }
-    
+
     await updateTasks(updates);
   }
 
@@ -325,33 +320,39 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   /// This atomically adds the task and updates the old head if there is one.
   Future<void> addTaskAsHead(Task newTask) async {
     final updates = <Task>[newTask];
-    
+
     // Find current head and update it to point back to new task.
     final pendingTasks = tasksForListOrdered(
       newTask.listId,
       completedSection: newTask.isCompleted,
     );
-    
+
     if (pendingTasks.isNotEmpty) {
       final oldHead = pendingTasks.first;
-      updates.add(copyTask(
-        oldHead,
-        previousTaskId: newTask.id,
-        nextTaskId: oldHead.nextTaskId, // Preserve the old next link
-      ));
+      updates.add(
+        copyTask(
+          oldHead,
+          previousTaskId: newTask.id,
+          nextTaskId: oldHead.nextTaskId, // Preserve the old next link
+        ),
+      );
     }
-    
+
     // Add to internal list and batch save/sync.
     _data.tasks.add(newTask);
     for (final task in updates.skip(1)) {
       final i = _data.tasks.indexWhere((t) => t.id == task.id);
       if (i >= 0) _data.tasks[i] = task;
     }
-    
+
     await _save();
-    
+
     for (final task in updates) {
-      _syncService.pushEntity('tasks', task.id, ProtoSerializer.taskToBytes(task));
+      _syncService.pushEntity(
+        'tasks',
+        task.id,
+        ProtoSerializer.taskToBytes(task),
+      );
     }
   }
 
@@ -366,14 +367,22 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   Future<void> addTask(Task task) async {
     _data.tasks.add(task);
     await _save();
-    _syncService.pushEntity('tasks', task.id, ProtoSerializer.taskToBytes(task));
+    _syncService.pushEntity(
+      'tasks',
+      task.id,
+      ProtoSerializer.taskToBytes(task),
+    );
   }
 
   Future<void> updateTask(Task task) async {
     final i = _data.tasks.indexWhere((t) => t.id == task.id);
     if (i >= 0) _data.tasks[i] = task;
     await _save();
-    _syncService.pushEntity('tasks', task.id, ProtoSerializer.taskToBytes(task));
+    _syncService.pushEntity(
+      'tasks',
+      task.id,
+      ProtoSerializer.taskToBytes(task),
+    );
   }
 
   Future<void> updateTasks(List<Task> tasks) async {
@@ -383,7 +392,11 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     }
     await _save();
     for (final task in tasks) {
-      _syncService.pushEntity('tasks', task.id, ProtoSerializer.taskToBytes(task));
+      _syncService.pushEntity(
+        'tasks',
+        task.id,
+        ProtoSerializer.taskToBytes(task),
+      );
     }
   }
 
@@ -404,7 +417,11 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
         task.completedDates.add(d);
       }
       await _save();
-      _syncService.pushEntity('tasks', task.id, ProtoSerializer.taskToBytes(task));
+      _syncService.pushEntity(
+        'tasks',
+        task.id,
+        ProtoSerializer.taskToBytes(task),
+      );
     } else {
       // For non-recurring tasks, toggle moves the task between sections.
       // We need to properly move it in the linked list.
@@ -415,36 +432,44 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   /// Toggle a task's completion status and move it to the head of the new section.
   Future<void> _toggleTaskWithReorder(Task task) async {
     final updates = <Task>[];
-    
+
     // 1. Remove task from its current section's linked list.
-    final oldPrev = task.previousTaskId != null ? taskById(task.previousTaskId!) : null;
+    final oldPrev = task.previousTaskId != null
+        ? taskById(task.previousTaskId!)
+        : null;
     final oldNext = task.nextTaskId != null ? taskById(task.nextTaskId!) : null;
-    
+
     if (oldPrev != null) {
-      updates.add(copyTask(
-        oldPrev,
-        previousTaskId: oldPrev.previousTaskId,
-        nextTaskId: oldNext?.id,
-      ));
+      updates.add(
+        copyTask(
+          oldPrev,
+          previousTaskId: oldPrev.previousTaskId,
+          nextTaskId: oldNext?.id,
+        ),
+      );
     }
     if (oldNext != null) {
-      updates.add(copyTask(
-        oldNext,
-        previousTaskId: oldPrev?.id,
-        nextTaskId: oldNext.nextTaskId,
-      ));
+      updates.add(
+        copyTask(
+          oldNext,
+          previousTaskId: oldPrev?.id,
+          nextTaskId: oldNext.nextTaskId,
+        ),
+      );
     }
-    
+
     // 2. Toggle completion status.
     final newCompletedStatus = !task.isCompleted;
-    
+
     // 3. Find the head of the new section.
     final newSectionTasks = tasksForListOrdered(
       task.listId,
       completedSection: newCompletedStatus,
     );
-    final newSectionHead = newSectionTasks.isNotEmpty ? newSectionTasks.first : null;
-    
+    final newSectionHead = newSectionTasks.isNotEmpty
+        ? newSectionTasks.first
+        : null;
+
     // 4. Insert task at the head of the new section.
     final updatedTask = copyTask(
       task,
@@ -453,26 +478,32 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     );
     updatedTask.isCompleted = newCompletedStatus;
     updates.add(updatedTask);
-    
+
     // 5. Update the old head of the new section to point back.
     if (newSectionHead != null) {
-      updates.add(copyTask(
-        newSectionHead,
-        previousTaskId: task.id,
-        nextTaskId: newSectionHead.nextTaskId,
-      ));
+      updates.add(
+        copyTask(
+          newSectionHead,
+          previousTaskId: task.id,
+          nextTaskId: newSectionHead.nextTaskId,
+        ),
+      );
     }
-    
+
     // Apply all updates atomically.
     for (final update in updates) {
       final i = _data.tasks.indexWhere((t) => t.id == update.id);
       if (i >= 0) _data.tasks[i] = update;
     }
-    
+
     await _save();
-    
+
     for (final update in updates) {
-      _syncService.pushEntity('tasks', update.id, ProtoSerializer.taskToBytes(update));
+      _syncService.pushEntity(
+        'tasks',
+        update.id,
+        ProtoSerializer.taskToBytes(update),
+      );
     }
   }
 
@@ -489,14 +520,22 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   Future<void> addList(TaskList list) async {
     _data.lists.add(list);
     await _save();
-    _syncService.pushEntity('lists', list.id, ProtoSerializer.listToBytes(list));
+    _syncService.pushEntity(
+      'lists',
+      list.id,
+      ProtoSerializer.listToBytes(list),
+    );
   }
 
   Future<void> updateList(TaskList list) async {
     final i = _data.lists.indexWhere((l) => l.id == list.id);
     if (i >= 0) _data.lists[i] = list;
     await _save();
-    _syncService.pushEntity('lists', list.id, ProtoSerializer.listToBytes(list));
+    _syncService.pushEntity(
+      'lists',
+      list.id,
+      ProtoSerializer.listToBytes(list),
+    );
   }
 
   Future<void> deleteList(String id) async {
@@ -521,7 +560,11 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     }
     await _save();
     for (final list in reorderedLists) {
-      _syncService.pushEntity('lists', list.id, ProtoSerializer.listToBytes(list));
+      _syncService.pushEntity(
+        'lists',
+        list.id,
+        ProtoSerializer.listToBytes(list),
+      );
     }
   }
 
@@ -538,14 +581,22 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   Future<void> addFolder(Folder folder) async {
     _data.folders.add(folder);
     await _save();
-    _syncService.pushEntity('folders', folder.id, ProtoSerializer.folderToBytes(folder));
+    _syncService.pushEntity(
+      'folders',
+      folder.id,
+      ProtoSerializer.folderToBytes(folder),
+    );
   }
 
   Future<void> updateFolder(Folder folder) async {
     final i = _data.folders.indexWhere((f) => f.id == folder.id);
     if (i >= 0) _data.folders[i] = folder;
     await _save();
-    _syncService.pushEntity('folders', folder.id, ProtoSerializer.folderToBytes(folder));
+    _syncService.pushEntity(
+      'folders',
+      folder.id,
+      ProtoSerializer.folderToBytes(folder),
+    );
   }
 
   Future<void> deleteFolder(String id) async {
@@ -557,7 +608,11 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     await _save();
     _syncService.pushDeletion('folders', id);
     for (final list in affectedLists) {
-      _syncService.pushEntity('lists', list.id, ProtoSerializer.listToBytes(list));
+      _syncService.pushEntity(
+        'lists',
+        list.id,
+        ProtoSerializer.listToBytes(list),
+      );
     }
   }
 
@@ -571,7 +626,11 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     }
     await _save();
     for (final folder in reorderedFolders) {
-      _syncService.pushEntity('folders', folder.id, ProtoSerializer.folderToBytes(folder));
+      _syncService.pushEntity(
+        'folders',
+        folder.id,
+        ProtoSerializer.folderToBytes(folder),
+      );
     }
   }
 
@@ -609,7 +668,11 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     await _save();
     _syncService.pushDeletion('tags', id);
     for (final task in affectedTasks) {
-      _syncService.pushEntity('tasks', task.id, ProtoSerializer.taskToBytes(task));
+      _syncService.pushEntity(
+        'tasks',
+        task.id,
+        ProtoSerializer.taskToBytes(task),
+      );
     }
   }
 
@@ -630,14 +693,22 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   Future<void> addSmartList(SmartList smartList) async {
     _data.smartLists.add(smartList);
     await _save();
-    _syncService.pushEntity('smart_lists', smartList.id, ProtoSerializer.smartListToBytes(smartList));
+    _syncService.pushEntity(
+      'smart_lists',
+      smartList.id,
+      ProtoSerializer.smartListToBytes(smartList),
+    );
   }
 
   Future<void> updateSmartList(SmartList smartList) async {
     final i = _data.smartLists.indexWhere((s) => s.id == smartList.id);
     if (i >= 0) _data.smartLists[i] = smartList;
     await _save();
-    _syncService.pushEntity('smart_lists', smartList.id, ProtoSerializer.smartListToBytes(smartList));
+    _syncService.pushEntity(
+      'smart_lists',
+      smartList.id,
+      ProtoSerializer.smartListToBytes(smartList),
+    );
   }
 
   Future<void> deleteSmartList(String id) async {

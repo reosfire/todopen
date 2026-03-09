@@ -38,17 +38,24 @@ class TodayFilter extends SmartListFilter {
     final today = DateTime(now.year, now.month, now.day);
     final todayTasks = allTasks.where((t) => t.occursOn(today)).toList();
 
-    final pending = todayTasks
-        .where((t) =>
-            t.recurrence != null ? !t.isCompletedOn(today) : !t.isCompleted)
-        .toList()
-      ..sort(_byScheduledDate);
+    final pending =
+        todayTasks
+            .where(
+              (t) => t.recurrence != null
+                  ? !t.isCompletedOn(today)
+                  : !t.isCompleted,
+            )
+            .toList()
+          ..sort(_byScheduledDate);
 
-    final completed = todayTasks
-        .where((t) =>
-            t.recurrence != null ? t.isCompletedOn(today) : t.isCompleted)
-        .toList()
-      ..sort(_byScheduledDate);
+    final completed =
+        todayTasks
+            .where(
+              (t) =>
+                  t.recurrence != null ? t.isCompletedOn(today) : t.isCompleted,
+            )
+            .toList()
+          ..sort(_byScheduledDate);
 
     return [
       TaskSection(tasks: pending),
@@ -62,11 +69,11 @@ class TodayFilter extends SmartListFilter {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     return allTasks
-        .where((t) =>
-            t.occursOn(today) &&
-            (t.recurrence != null
-                ? !t.isCompletedOn(today)
-                : !t.isCompleted))
+        .where(
+          (t) =>
+              t.occursOn(today) &&
+              (t.recurrence != null ? !t.isCompletedOn(today) : !t.isCompleted),
+        )
         .length;
   }
 }
@@ -86,24 +93,32 @@ class TomorrowFilter extends SmartListFilter {
   @override
   List<TaskSection> organize(List<Task> allTasks) {
     final now = DateTime.now();
-    final tomorrow =
-        DateTime(now.year, now.month, now.day).add(const Duration(days: 1));
-    final tomorrowTasks =
-        allTasks.where((t) => t.occursOn(tomorrow)).toList();
+    final tomorrow = DateTime(
+      now.year,
+      now.month,
+      now.day,
+    ).add(const Duration(days: 1));
+    final tomorrowTasks = allTasks.where((t) => t.occursOn(tomorrow)).toList();
 
-    final pending = tomorrowTasks
-        .where((t) => t.recurrence != null
-            ? !t.isCompletedOn(tomorrow)
-            : !t.isCompleted)
-        .toList()
-      ..sort(_byScheduledDate);
+    final pending =
+        tomorrowTasks
+            .where(
+              (t) => t.recurrence != null
+                  ? !t.isCompletedOn(tomorrow)
+                  : !t.isCompleted,
+            )
+            .toList()
+          ..sort(_byScheduledDate);
 
-    final completed = tomorrowTasks
-        .where((t) => t.recurrence != null
-            ? t.isCompletedOn(tomorrow)
-            : t.isCompleted)
-        .toList()
-      ..sort(_byScheduledDate);
+    final completed =
+        tomorrowTasks
+            .where(
+              (t) => t.recurrence != null
+                  ? t.isCompletedOn(tomorrow)
+                  : t.isCompleted,
+            )
+            .toList()
+          ..sort(_byScheduledDate);
 
     return [
       TaskSection(tasks: pending),
@@ -115,14 +130,19 @@ class TomorrowFilter extends SmartListFilter {
   @override
   int countTasks(List<Task> allTasks) {
     final now = DateTime.now();
-    final tomorrow =
-        DateTime(now.year, now.month, now.day).add(const Duration(days: 1));
+    final tomorrow = DateTime(
+      now.year,
+      now.month,
+      now.day,
+    ).add(const Duration(days: 1));
     return allTasks
-        .where((t) =>
-            t.occursOn(tomorrow) &&
-            (t.recurrence != null
-                ? !t.isCompletedOn(tomorrow)
-                : !t.isCompleted))
+        .where(
+          (t) =>
+              t.occursOn(tomorrow) &&
+              (t.recurrence != null
+                  ? !t.isCompletedOn(tomorrow)
+                  : !t.isCompleted),
+        )
         .length;
   }
 }
@@ -161,9 +181,11 @@ class UpcomingFilter extends SmartListFilter {
         if (task.occursOn(tomorrow) && !task.isCompletedOn(tomorrow)) {
           tomorrowTasks.add(task);
         }
-        for (var d = dayAfterTomorrow;
-            d.isBefore(endOfWeek) || d.isAtSameMomentAs(endOfWeek);
-            d = d.add(const Duration(days: 1))) {
+        for (
+          var d = dayAfterTomorrow;
+          d.isBefore(endOfWeek) || d.isAtSameMomentAs(endOfWeek);
+          d = d.add(const Duration(days: 1))
+        ) {
           if (task.occursOn(d) && !task.isCompletedOn(d)) {
             restOfWeek.add(task);
             break;
@@ -194,15 +216,9 @@ class UpcomingFilter extends SmartListFilter {
 
     return [
       if (overdue.isNotEmpty)
-        TaskSection(
-          header: 'Overdue',
-          tasks: overdue..sort(_byScheduledDate),
-        ),
+        TaskSection(header: 'Overdue', tasks: overdue..sort(_byScheduledDate)),
       if (todayTasks.isNotEmpty)
-        TaskSection(
-          header: 'Today',
-          tasks: todayTasks..sort(_byScheduledDate),
-        ),
+        TaskSection(header: 'Today', tasks: todayTasks..sort(_byScheduledDate)),
       if (tomorrowTasks.isNotEmpty)
         TaskSection(
           header: 'Tomorrow',
@@ -214,10 +230,7 @@ class UpcomingFilter extends SmartListFilter {
           tasks: restOfWeek..sort(_byScheduledDate),
         ),
       if (later.isNotEmpty)
-        TaskSection(
-          header: 'Later',
-          tasks: later..sort(_byScheduledDate),
-        ),
+        TaskSection(header: 'Later', tasks: later..sort(_byScheduledDate)),
     ];
   }
 
@@ -251,8 +264,7 @@ class OverdueFilter extends SmartListFilter {
         t.scheduledDate!.day,
       );
       return sd.isBefore(today);
-    }).toList()
-      ..sort(_byScheduledDate);
+    }).toList()..sort(_byScheduledDate);
 
     return [TaskSection(tasks: tasks)];
   }
@@ -288,8 +300,7 @@ class DateRangeFilter extends SmartListFilter {
         t.scheduledDate!.day,
       );
       return !sd.isBefore(from) && !sd.isAfter(to);
-    }).toList()
-      ..sort(_byScheduledDate);
+    }).toList()..sort(_byScheduledDate);
 
     return [TaskSection(tasks: tasks)];
   }
@@ -309,8 +320,9 @@ class TagsFilter extends SmartListFilter {
 
   @override
   List<TaskSection> organize(List<Task> allTasks) {
-    final matching =
-        allTasks.where((t) => t.tagIds.any((id) => tagIds.contains(id)));
+    final matching = allTasks.where(
+      (t) => t.tagIds.any((id) => tagIds.contains(id)),
+    );
 
     final pending = matching.where((t) => !t.isCompleted).toList()
       ..sort(_byScheduledDate);
@@ -328,7 +340,8 @@ class TagsFilter extends SmartListFilter {
   int countTasks(List<Task> allTasks) {
     return allTasks
         .where(
-            (t) => !t.isCompleted && t.tagIds.any((id) => tagIds.contains(id)))
+          (t) => !t.isCompleted && t.tagIds.any((id) => tagIds.contains(id)),
+        )
         .length;
   }
 }

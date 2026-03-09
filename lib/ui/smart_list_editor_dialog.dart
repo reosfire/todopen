@@ -4,13 +4,7 @@ import '../models/smart_list.dart';
 import '../state/app_state.dart';
 
 /// The filter types available for user-created smart lists.
-enum _EditorFilterType {
-  overdue,
-  dateRange,
-  tags,
-  completed,
-  all,
-}
+enum _EditorFilterType { overdue, dateRange, tags, completed, all }
 
 class SmartListEditorDialog extends StatefulWidget {
   final SmartList? smartList;
@@ -217,8 +211,10 @@ class _SmartListEditorDialogState extends State<SmartListEditorDialog> {
 
     final SmartListFilter filter = switch (_filterType) {
       _EditorFilterType.overdue => const OverdueFilter(),
-      _EditorFilterType.dateRange =>
-        DateRangeFilter(dateFrom: _dateFrom, dateTo: _dateTo),
+      _EditorFilterType.dateRange => DateRangeFilter(
+        dateFrom: _dateFrom,
+        dateTo: _dateTo,
+      ),
       _EditorFilterType.tags => TagsFilter(tagIds: _tagIds),
       _EditorFilterType.completed => const CompletedFilter(),
       _EditorFilterType.all => const AllTasksFilter(),

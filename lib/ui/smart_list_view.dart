@@ -31,8 +31,11 @@ class SmartListView extends StatelessWidget {
     final now = DateTime.now();
     return switch (filter) {
       TodayFilter() => DateTime(now.year, now.month, now.day),
-      TomorrowFilter() =>
-        DateTime(now.year, now.month, now.day).add(const Duration(days: 1)),
+      TomorrowFilter() => DateTime(
+        now.year,
+        now.month,
+        now.day,
+      ).add(const Duration(days: 1)),
       _ => null,
     };
   }
@@ -43,9 +46,7 @@ class SmartListView extends StatelessWidget {
     SmartListFilter filter,
   ) async {
     // Find first orphan list (not in a folder), sorted by order.
-    final orphanLists = state.lists
-        .where((l) => l.folderId == null)
-        .toList()
+    final orphanLists = state.lists.where((l) => l.folderId == null).toList()
       ..sort((a, b) => a.order.compareTo(b.order));
 
     if (orphanLists.isEmpty) return;

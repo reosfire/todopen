@@ -338,7 +338,7 @@ class _TaskEditorDialogState extends State<TaskEditorDialog> {
         previousTaskId: null,
         nextTaskId: currentHead?.id,
       );
-      
+
       await state.addTaskAsHead(newTask);
     }
     Navigator.pop(context);
@@ -495,10 +495,20 @@ class _TaskEditorDialogState extends State<TaskEditorDialog> {
     final initial = _scheduledDate ?? DateTime.now();
     int month = initial.month;
     int day = initial.day;
-    
+
     const monthNames = [
-      'January', 'February', 'March', 'April', 'May', 'June',
-      'July', 'August', 'September', 'October', 'November', 'December',
+      'January',
+      'February',
+      'March',
+      'April',
+      'May',
+      'June',
+      'July',
+      'August',
+      'September',
+      'October',
+      'November',
+      'December',
     ];
 
     showDialog(
@@ -573,7 +583,7 @@ class _TaskEditorDialogState extends State<TaskEditorDialog> {
   void _showWeekdayPicker() {
     int selectedBits = 0;
     const names = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    
+
     showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(

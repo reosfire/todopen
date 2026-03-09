@@ -10,7 +10,7 @@ class Task {
   RecurrenceRule? recurrence;
   Set<String> tagIds;
   String listId;
-  
+
   // Intrusive linked list pointers for ordering tasks within a list.
   String? previousTaskId;
   String? nextTaskId;

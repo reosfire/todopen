@@ -34,40 +34,39 @@ class ProtoSerializer {
 
   static ProtoRecurrenceRule recurrenceToProto(RecurrenceRule r) {
     return switch (r) {
-      DailyRecurrence() =>
-        ProtoRecurrenceRule(daily: ProtoDailyRecurrence()),
-      EveryNDaysRecurrence(:final interval) =>
-        ProtoRecurrenceRule(
-          everyNDays: ProtoEveryNDaysRecurrence(interval: interval),
-        ),
-      WeeklyRecurrence(:final weekdayBits) =>
-        ProtoRecurrenceRule(
-          weekly: ProtoWeeklyRecurrence(weekdayBits: weekdayBits),
-        ),
-      MonthlyRecurrence(:final dayOfMonth) =>
-        ProtoRecurrenceRule(
-          monthly: ProtoMonthlyRecurrence(dayOfMonth: dayOfMonth),
-        ),
-      YearlyRecurrence(:final month, :final dayOfMonth) =>
-        ProtoRecurrenceRule(
-          yearly: ProtoYearlyRecurrence(month: month, dayOfMonth: dayOfMonth),
-        ),
+      DailyRecurrence() => ProtoRecurrenceRule(daily: ProtoDailyRecurrence()),
+      EveryNDaysRecurrence(:final interval) => ProtoRecurrenceRule(
+        everyNDays: ProtoEveryNDaysRecurrence(interval: interval),
+      ),
+      WeeklyRecurrence(:final weekdayBits) => ProtoRecurrenceRule(
+        weekly: ProtoWeeklyRecurrence(weekdayBits: weekdayBits),
+      ),
+      MonthlyRecurrence(:final dayOfMonth) => ProtoRecurrenceRule(
+        monthly: ProtoMonthlyRecurrence(dayOfMonth: dayOfMonth),
+      ),
+      YearlyRecurrence(:final month, :final dayOfMonth) => ProtoRecurrenceRule(
+        yearly: ProtoYearlyRecurrence(month: month, dayOfMonth: dayOfMonth),
+      ),
     };
   }
 
   static RecurrenceRule recurrenceFromProto(ProtoRecurrenceRule p) {
     return switch (p.whichRule()) {
       ProtoRecurrenceRule_Rule.daily => DailyRecurrence(),
-      ProtoRecurrenceRule_Rule.everyNDays =>
-        EveryNDaysRecurrence(p.everyNDays.interval),
-      ProtoRecurrenceRule_Rule.weekly =>
-        WeeklyRecurrence(p.weekly.weekdayBits),
-      ProtoRecurrenceRule_Rule.monthly =>
-        MonthlyRecurrence(p.monthly.dayOfMonth),
-      ProtoRecurrenceRule_Rule.yearly =>
-        YearlyRecurrence(p.yearly.month, p.yearly.dayOfMonth),
-      ProtoRecurrenceRule_Rule.notSet =>
-        throw StateError('RecurrenceRule has no variant set'),
+      ProtoRecurrenceRule_Rule.everyNDays => EveryNDaysRecurrence(
+        p.everyNDays.interval,
+      ),
+      ProtoRecurrenceRule_Rule.weekly => WeeklyRecurrence(p.weekly.weekdayBits),
+      ProtoRecurrenceRule_Rule.monthly => MonthlyRecurrence(
+        p.monthly.dayOfMonth,
+      ),
+      ProtoRecurrenceRule_Rule.yearly => YearlyRecurrence(
+        p.yearly.month,
+        p.yearly.dayOfMonth,
+      ),
+      ProtoRecurrenceRule_Rule.notSet => throw StateError(
+        'RecurrenceRule has no variant set',
+      ),
     };
   }
 
@@ -75,31 +74,25 @@ class ProtoSerializer {
 
   static ProtoSmartListFilter filterToProto(SmartListFilter f) {
     return switch (f) {
-      TodayFilter() =>
-        ProtoSmartListFilter(today: ProtoTodayFilter()),
-      TomorrowFilter() =>
-        ProtoSmartListFilter(tomorrow: ProtoTomorrowFilter()),
-      UpcomingFilter() =>
-        ProtoSmartListFilter(upcoming: ProtoUpcomingFilter()),
-      OverdueFilter() =>
-        ProtoSmartListFilter(overdue: ProtoOverdueFilter()),
-      CompletedFilter() =>
-        ProtoSmartListFilter(completed: ProtoCompletedFilter()),
-      AllTasksFilter() =>
-        ProtoSmartListFilter(all: ProtoAllTasksFilter()),
-      DateRangeFilter(:final dateFrom, :final dateTo) =>
-        ProtoSmartListFilter(
-          dateRange: ProtoDateRangeFilter(
-            hasDateFrom: dateFrom != null,
-            dateFromMs: dateFrom != null ? _toMs(dateFrom) : Int64.ZERO,
-            hasDateTo: dateTo != null,
-            dateToMs: dateTo != null ? _toMs(dateTo) : Int64.ZERO,
-          ),
+      TodayFilter() => ProtoSmartListFilter(today: ProtoTodayFilter()),
+      TomorrowFilter() => ProtoSmartListFilter(tomorrow: ProtoTomorrowFilter()),
+      UpcomingFilter() => ProtoSmartListFilter(upcoming: ProtoUpcomingFilter()),
+      OverdueFilter() => ProtoSmartListFilter(overdue: ProtoOverdueFilter()),
+      CompletedFilter() => ProtoSmartListFilter(
+        completed: ProtoCompletedFilter(),
+      ),
+      AllTasksFilter() => ProtoSmartListFilter(all: ProtoAllTasksFilter()),
+      DateRangeFilter(:final dateFrom, :final dateTo) => ProtoSmartListFilter(
+        dateRange: ProtoDateRangeFilter(
+          hasDateFrom: dateFrom != null,
+          dateFromMs: dateFrom != null ? _toMs(dateFrom) : Int64.ZERO,
+          hasDateTo: dateTo != null,
+          dateToMs: dateTo != null ? _toMs(dateTo) : Int64.ZERO,
         ),
-      TagsFilter(:final tagIds) =>
-        ProtoSmartListFilter(
-          tags: ProtoTagsFilter(tagIds: tagIds.map(_uuidToBytes)),
-        ),
+      ),
+      TagsFilter(:final tagIds) => ProtoSmartListFilter(
+        tags: ProtoTagsFilter(tagIds: tagIds.map(_uuidToBytes)),
+      ),
     };
   }
 
@@ -112,11 +105,14 @@ class ProtoSerializer {
       ProtoSmartListFilter_Filter.completed => const CompletedFilter(),
       ProtoSmartListFilter_Filter.all => const AllTasksFilter(),
       ProtoSmartListFilter_Filter.dateRange => DateRangeFilter(
-          dateFrom: p.dateRange.hasDateFrom ? _fromMs(p.dateRange.dateFromMs) : null,
-          dateTo: p.dateRange.hasDateTo ? _fromMs(p.dateRange.dateToMs) : null,
-        ),
-      ProtoSmartListFilter_Filter.tags =>
-        TagsFilter(tagIds: p.tags.tagIds.map(_uuidFromBytes).toSet()),
+        dateFrom: p.dateRange.hasDateFrom
+            ? _fromMs(p.dateRange.dateFromMs)
+            : null,
+        dateTo: p.dateRange.hasDateTo ? _fromMs(p.dateRange.dateToMs) : null,
+      ),
+      ProtoSmartListFilter_Filter.tags => TagsFilter(
+        tagIds: p.tags.tagIds.map(_uuidFromBytes).toSet(),
+      ),
       ProtoSmartListFilter_Filter.notSet => const AllTasksFilter(),
     };
   }
@@ -130,8 +126,9 @@ class ProtoSerializer {
       notes: t.notes,
       isCompleted: t.isCompleted,
       createdAtMs: _toMs(t.createdAt),
-      scheduledDateMs:
-          t.scheduledDate != null ? _toMs(t.scheduledDate!) : Int64.ZERO,
+      scheduledDateMs: t.scheduledDate != null
+          ? _toMs(t.scheduledDate!)
+          : Int64.ZERO,
       tagIds: t.tagIds.map(_uuidToBytes),
       listId: _uuidToBytes(t.listId),
       previousTaskId: _optUuidToBytes(t.previousTaskId),
@@ -191,8 +188,11 @@ class ProtoSerializer {
 
   static Uint8List folderToBytes(Folder f) {
     return Uint8List.fromList(
-      ProtoFolder(id: _uuidToBytes(f.id), name: f.name, order: f.order)
-          .writeToBuffer(),
+      ProtoFolder(
+        id: _uuidToBytes(f.id),
+        name: f.name,
+        order: f.order,
+      ).writeToBuffer(),
     );
   }
 
@@ -205,14 +205,21 @@ class ProtoSerializer {
 
   static Uint8List tagToBytes(Tag t) {
     return Uint8List.fromList(
-      ProtoTag(id: _uuidToBytes(t.id), name: t.name, colorValue: t.colorValue)
-          .writeToBuffer(),
+      ProtoTag(
+        id: _uuidToBytes(t.id),
+        name: t.name,
+        colorValue: t.colorValue,
+      ).writeToBuffer(),
     );
   }
 
   static Tag tagFromBytes(Uint8List bytes) {
     final p = ProtoTag.fromBuffer(bytes);
-    return Tag(id: _uuidFromBytes(p.id), name: p.name, colorValue: p.colorValue);
+    return Tag(
+      id: _uuidFromBytes(p.id),
+      name: p.name,
+      colorValue: p.colorValue,
+    );
   }
 
   // ───── SmartList ─────
@@ -245,8 +252,12 @@ class ProtoSerializer {
   static Uint8List syncIndexToBytes(SyncIndex index) {
     return Uint8List.fromList(
       ProtoSyncIndex(
-        entities: index.entities.entries.map((e) => MapEntry(e.key, _toMs(e.value))),
-        deletions: index.deletions.entries.map((e) => MapEntry(e.key, _toMs(e.value))),
+        entities: index.entities.entries.map(
+          (e) => MapEntry(e.key, _toMs(e.value)),
+        ),
+        deletions: index.deletions.entries.map(
+          (e) => MapEntry(e.key, _toMs(e.value)),
+        ),
       ).writeToBuffer(),
     );
   }

@@ -56,7 +56,7 @@ class WeeklyRecurrence extends RecurrenceRule {
     final d = DateTime(date.year, date.month, date.day);
     final s = DateTime(startDate.year, startDate.month, startDate.day);
     if (d.isBefore(s)) return false;
-    
+
     return (weekdayBits & (1 << d.weekday)) != 0;
   }
 
@@ -68,12 +68,12 @@ class WeeklyRecurrence extends RecurrenceRule {
     bool first = true;
     for (int i = 1; i <= 7; i++) {
       if ((weekdayBits & (1 << i)) == 0) continue;
-      
+
       if (!first) buffer.write(', ');
       buffer.write(names[i]);
       first = false;
     }
-    
+
     return buffer.toString();
   }
 }

@@ -16,9 +16,9 @@ class StorageService {
       final folderRows = await _db.select(_db.folderEntries).get();
       final tagRows = await _db.select(_db.tagEntries).get();
       final smartListRows = await _db.select(_db.smartListEntries).get();
-      final metaRow = await (_db.select(_db.metadataEntries)
-            ..where((m) => m.key.equals('lastModified')))
-          .getSingleOrNull();
+      final metaRow = await (_db.select(
+        _db.metadataEntries,
+      )..where((m) => m.key.equals('lastModified'))).getSingleOrNull();
 
       return AppData(
         tasks: taskRows
@@ -30,14 +30,13 @@ class StorageService {
         folders: folderRows
             .map((r) => ProtoSerializer.folderFromBytes(r.data))
             .toList(),
-        tags: tagRows
-            .map((r) => ProtoSerializer.tagFromBytes(r.data))
-            .toList(),
+        tags: tagRows.map((r) => ProtoSerializer.tagFromBytes(r.data)).toList(),
         smartLists: smartListRows
             .map((r) => ProtoSerializer.smartListFromBytes(r.data))
             .toList(),
-        lastModified:
-            metaRow != null ? DateTime.parse(metaRow.value) : DateTime.now(),
+        lastModified: metaRow != null
+            ? DateTime.parse(metaRow.value)
+            : DateTime.now(),
       );
     } catch (_) {
       // Ignore corrupt data, return defaults.
@@ -59,42 +58,54 @@ class StorageService {
       await _db.batch((batch) {
         batch.insertAll(
           _db.taskEntries,
-          data.tasks.map((t) => TaskEntriesCompanion.insert(
-                id: t.id,
-                data: ProtoSerializer.taskToBytes(t),
-              )),
+          data.tasks.map(
+            (t) => TaskEntriesCompanion.insert(
+              id: t.id,
+              data: ProtoSerializer.taskToBytes(t),
+            ),
+          ),
         );
         batch.insertAll(
           _db.listEntries,
-          data.lists.map((l) => ListEntriesCompanion.insert(
-                id: l.id,
-                data: ProtoSerializer.listToBytes(l),
-              )),
+          data.lists.map(
+            (l) => ListEntriesCompanion.insert(
+              id: l.id,
+              data: ProtoSerializer.listToBytes(l),
+            ),
+          ),
         );
         batch.insertAll(
           _db.folderEntries,
-          data.folders.map((f) => FolderEntriesCompanion.insert(
-                id: f.id,
-                data: ProtoSerializer.folderToBytes(f),
-              )),
+          data.folders.map(
+            (f) => FolderEntriesCompanion.insert(
+              id: f.id,
+              data: ProtoSerializer.folderToBytes(f),
+            ),
+          ),
         );
         batch.insertAll(
           _db.tagEntries,
-          data.tags.map((t) => TagEntriesCompanion.insert(
-                id: t.id,
-                data: ProtoSerializer.tagToBytes(t),
-              )),
+          data.tags.map(
+            (t) => TagEntriesCompanion.insert(
+              id: t.id,
+              data: ProtoSerializer.tagToBytes(t),
+            ),
+          ),
         );
         batch.insertAll(
           _db.smartListEntries,
-          data.smartLists.map((s) => SmartListEntriesCompanion.insert(
-                id: s.id,
-                data: ProtoSerializer.smartListToBytes(s),
-              )),
+          data.smartLists.map(
+            (s) => SmartListEntriesCompanion.insert(
+              id: s.id,
+              data: ProtoSerializer.smartListToBytes(s),
+            ),
+          ),
         );
       });
 
-      await _db.into(_db.metadataEntries).insertOnConflictUpdate(
+      await _db
+          .into(_db.metadataEntries)
+          .insertOnConflictUpdate(
             MetadataEntriesCompanion.insert(
               key: 'lastModified',
               value: data.lastModified.toIso8601String(),
@@ -112,9 +123,7 @@ class StorageService {
 
       return SyncIndex(
         entities: {for (final r in entityRows) r.key: DateTime.parse(r.ts)},
-        deletions: {
-          for (final r in deletionRows) r.key: DateTime.parse(r.ts)
-        },
+        deletions: {for (final r in deletionRows) r.key: DateTime.parse(r.ts)},
       );
     } catch (_) {
       return SyncIndex();
@@ -129,18 +138,21 @@ class StorageService {
       await _db.batch((batch) {
         batch.insertAll(
           _db.syncEntityEntries,
-          index.entities.entries.map((e) => SyncEntityEntriesCompanion.insert(
-                key: e.key,
-                ts: e.value.toIso8601String(),
-              )),
+          index.entities.entries.map(
+            (e) => SyncEntityEntriesCompanion.insert(
+              key: e.key,
+              ts: e.value.toIso8601String(),
+            ),
+          ),
         );
         batch.insertAll(
           _db.syncDeletionEntries,
-          index.deletions.entries
-              .map((e) => SyncDeletionEntriesCompanion.insert(
-                    key: e.key,
-                    ts: e.value.toIso8601String(),
-                  )),
+          index.deletions.entries.map(
+            (e) => SyncDeletionEntriesCompanion.insert(
+              key: e.key,
+              ts: e.value.toIso8601String(),
+            ),
+          ),
         );
       });
     });
@@ -151,16 +163,18 @@ class StorageService {
   static const _expandedFoldersKey = 'expanded_folder_ids';
 
   Future<Set<String>> loadExpandedFolderIds() async {
-    final row = await (_db.select(_db.uiStateEntries)
-          ..where((r) => r.key.equals(_expandedFoldersKey)))
-        .getSingleOrNull();
+    final row = await (_db.select(
+      _db.uiStateEntries,
+    )..where((r) => r.key.equals(_expandedFoldersKey))).getSingleOrNull();
     if (row == null) return {};
     final list = jsonDecode(row.value) as List;
     return list.cast<String>().toSet();
   }
 
   Future<void> saveExpandedFolderIds(Set<String> folderIds) async {
-    await _db.into(_db.uiStateEntries).insertOnConflictUpdate(
+    await _db
+        .into(_db.uiStateEntries)
+        .insertOnConflictUpdate(
           UiStateEntriesCompanion.insert(
             key: _expandedFoldersKey,
             value: jsonEncode(folderIds.toList()),

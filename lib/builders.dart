@@ -33,10 +33,7 @@ class _ProtoBuilder implements Builder {
   Future<void> build(BuildStep buildStep) async {
     // e.g. "proto/models.proto" → "models"
     final inputPath = buildStep.inputId.path;
-    final baseName = inputPath
-        .split('/')
-        .last
-        .replaceAll('.proto', '');
+    final baseName = inputPath.split('/').last.replaceAll('.proto', '');
 
     final protoc = _find(
       name: 'protoc',
@@ -55,15 +52,13 @@ class _ProtoBuilder implements Builder {
 
     final tempDir = await Directory.systemTemp.createTemp('proto_build_');
     try {
-      final result = await Process.run(
-        protoc,
-        [
-          '--dart_out=${tempDir.path}',
-          '-I', 'proto',
-          '--plugin=protoc-gen-dart=$plugin',
-          inputPath,
-        ],
-      );
+      final result = await Process.run(protoc, [
+        '--dart_out=${tempDir.path}',
+        '-I',
+        'proto',
+        '--plugin=protoc-gen-dart=$plugin',
+        inputPath,
+      ]);
       if (result.exitCode != 0) {
         throw Exception('protoc failed:\n${result.stderr}');
       }
@@ -98,7 +93,9 @@ String _find({
   if (onPath != null) return onPath;
 
   // 2. WinGet packages directory (Windows)
-  if (wingetPackagePrefix != null && wingetSubPath != null && Platform.isWindows) {
+  if (wingetPackagePrefix != null &&
+      wingetSubPath != null &&
+      Platform.isWindows) {
     final base =
         '${Platform.environment['LOCALAPPDATA']}\\Microsoft\\WinGet\\Packages';
     final dir = Directory(base);
@@ -115,7 +112,8 @@ String _find({
 
   // 3. Pub global cache
   if (pubCacheName != null) {
-    final cache = Platform.environment['PUB_CACHE'] ??
+    final cache =
+        Platform.environment['PUB_CACHE'] ??
         (Platform.isWindows
             ? '${Platform.environment['LOCALAPPDATA']}\\Pub\\Cache'
             : '${Platform.environment['HOME']}/.pub-cache');
@@ -133,11 +131,9 @@ String _find({
 
 String? _which(String name) {
   try {
-    final r = Process.runSync(
-      Platform.isWindows ? 'where' : 'which',
-      [name],
-      runInShell: true,
-    );
+    final r = Process.runSync(Platform.isWindows ? 'where' : 'which', [
+      name,
+    ], runInShell: true);
     if (r.exitCode == 0) {
       final first = (r.stdout as String).trim().split('\n').first.trim();
       if (first.isNotEmpty) return first;
