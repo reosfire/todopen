@@ -17,11 +17,6 @@ A todo app written with flutter supporting web and mobile platforms. Supports fr
 - Flutter SDK 3.9+
 - A Dropbox app key (optional, for sync)
 
-### Compiling protobuf:
-```bash
-dart run build_runner build --delete-conflicting-outputs
-```
-
 ### Run locally
 
 ```bash

@@ -2,9 +2,8 @@ import 'dart:async';
 import 'package:archive/archive.dart';
 import 'package:flutter/foundation.dart';
 import '../models/app_data.dart';
-import '../models/sync_index.dart';
 import 'dropbox_service.dart';
-import 'proto_serializer.dart';
+import 'binary_serializer.dart';
 import 'storage_service.dart';
 
 /// Orchestrates per-entity sync with Dropbox.
@@ -209,7 +208,7 @@ class SyncService {
       return localData;
     }
 
-    final remoteIndex = ProtoSerializer.syncIndexFromBytes(indexBytes);
+    final remoteIndex = BinarySerializer.syncIndexFromBytes(indexBytes);
 
     bool localChanged = false;
 
@@ -392,19 +391,19 @@ class SyncService {
     // Collect all entities to upload.
     final entries = <(String key, Uint8List bytes)>[];
     for (final t in data.tasks) {
-      entries.add(('tasks/${t.id}', ProtoSerializer.taskToBytes(t)));
+      entries.add(('tasks/${t.id}', BinarySerializer.taskToBytes(t)));
     }
     for (final l in data.lists) {
-      entries.add(('lists/${l.id}', ProtoSerializer.listToBytes(l)));
+      entries.add(('lists/${l.id}', BinarySerializer.listToBytes(l)));
     }
     for (final f in data.folders) {
-      entries.add(('folders/${f.id}', ProtoSerializer.folderToBytes(f)));
+      entries.add(('folders/${f.id}', BinarySerializer.folderToBytes(f)));
     }
     for (final t in data.tags) {
-      entries.add(('tags/${t.id}', ProtoSerializer.tagToBytes(t)));
+      entries.add(('tags/${t.id}', BinarySerializer.tagToBytes(t)));
     }
     for (final s in data.smartLists) {
-      entries.add(('smart_lists/${s.id}', ProtoSerializer.smartListToBytes(s)));
+      entries.add(('smart_lists/${s.id}', BinarySerializer.smartListToBytes(s)));
     }
 
     await _runParallel(
@@ -431,7 +430,7 @@ class SyncService {
   Future<SyncIndex> _downloadRemoteIndex() async {
     final bytes = await _dropbox.downloadBinaryFile('/index.bin');
     if (bytes != null) {
-      return ProtoSerializer.syncIndexFromBytes(bytes);
+      return BinarySerializer.syncIndexFromBytes(bytes);
     }
     return SyncIndex();
   }
@@ -439,7 +438,7 @@ class SyncService {
   Future<void> _uploadRemoteIndex(SyncIndex index) async {
     await _dropbox.uploadBinaryFile(
       '/index.bin',
-      ProtoSerializer.syncIndexToBytes(index),
+      BinarySerializer.syncIndexToBytes(index),
     );
   }
 
@@ -450,7 +449,7 @@ class SyncService {
     final type = key.substring(0, slash);
     switch (type) {
       case 'tasks':
-        final entity = ProtoSerializer.taskFromBytes(bytes);
+        final entity = BinarySerializer.taskFromBytes(bytes);
         final idx = data.tasks.indexWhere((t) => t.id == entity.id);
         if (idx >= 0) {
           data.tasks[idx] = entity;
@@ -458,7 +457,7 @@ class SyncService {
           data.tasks.add(entity);
         }
       case 'lists':
-        final entity = ProtoSerializer.listFromBytes(bytes);
+        final entity = BinarySerializer.listFromBytes(bytes);
         final idx = data.lists.indexWhere((l) => l.id == entity.id);
         if (idx >= 0) {
           data.lists[idx] = entity;
@@ -466,7 +465,7 @@ class SyncService {
           data.lists.add(entity);
         }
       case 'folders':
-        final entity = ProtoSerializer.folderFromBytes(bytes);
+        final entity = BinarySerializer.folderFromBytes(bytes);
         final idx = data.folders.indexWhere((f) => f.id == entity.id);
         if (idx >= 0) {
           data.folders[idx] = entity;
@@ -474,7 +473,7 @@ class SyncService {
           data.folders.add(entity);
         }
       case 'tags':
-        final entity = ProtoSerializer.tagFromBytes(bytes);
+        final entity = BinarySerializer.tagFromBytes(bytes);
         final idx = data.tags.indexWhere((t) => t.id == entity.id);
         if (idx >= 0) {
           data.tags[idx] = entity;
@@ -482,7 +481,7 @@ class SyncService {
           data.tags.add(entity);
         }
       case 'smart_lists':
-        final entity = ProtoSerializer.smartListFromBytes(bytes);
+        final entity = BinarySerializer.smartListFromBytes(bytes);
         final idx = data.smartLists.indexWhere((s) => s.id == entity.id);
         if (idx >= 0) {
           data.smartLists[idx] = entity;
@@ -517,23 +516,23 @@ class SyncService {
     try {
       switch (type) {
         case 'tasks':
-          return ProtoSerializer.taskToBytes(
+          return BinarySerializer.taskToBytes(
             data.tasks.firstWhere((t) => t.id == id),
           );
         case 'lists':
-          return ProtoSerializer.listToBytes(
+          return BinarySerializer.listToBytes(
             data.lists.firstWhere((l) => l.id == id),
           );
         case 'folders':
-          return ProtoSerializer.folderToBytes(
+          return BinarySerializer.folderToBytes(
             data.folders.firstWhere((f) => f.id == id),
           );
         case 'tags':
-          return ProtoSerializer.tagToBytes(
+          return BinarySerializer.tagToBytes(
             data.tags.firstWhere((t) => t.id == id),
           );
         case 'smart_lists':
-          return ProtoSerializer.smartListToBytes(
+          return BinarySerializer.smartListToBytes(
             data.smartLists.firstWhere((s) => s.id == id),
           );
         default:
@@ -556,7 +555,7 @@ class SyncService {
       final indexBytes = await _dropbox.downloadBinaryFile('/index.bin');
       if (indexBytes == null) return false;
 
-      final remoteIndex = ProtoSerializer.syncIndexFromBytes(indexBytes);
+      final remoteIndex = BinarySerializer.syncIndexFromBytes(indexBytes);
 
       bool changed = false;
 

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:todopen/utils/uuid128.dart';
 import 'task.dart';
 
 /// A section of tasks to display in a grouped list view.
@@ -311,7 +312,7 @@ class DateRangeFilter extends SmartListFilter {
 }
 
 class TagsFilter extends SmartListFilter {
-  final Set<String> tagIds;
+  final Set<Uuid128> tagIds;
 
   const TagsFilter({required this.tagIds});
 

@@ -1,18 +1,21 @@
 import 'dart:ui';
 
+import 'package:todopen/utils/uuid128.dart';
+
 class TaskList {
-  String id;
+  Uuid128 id;
+  List<Uuid128> taskIds;
+
   String name;
   int? colorValue;
   String? folderId;
-  int order;
 
   TaskList({
     required this.id,
+    required this.taskIds,
     required this.name,
     this.colorValue,
     this.folderId,
-    this.order = 0,
   });
 
   Color? get color => colorValue != null ? Color(colorValue!) : null;

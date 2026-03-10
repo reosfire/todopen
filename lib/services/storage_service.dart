@@ -1,8 +1,7 @@
 import 'dart:convert';
 import '../models/app_data.dart';
-import '../models/sync_index.dart';
 import 'app_database.dart';
-import 'proto_serializer.dart';
+import 'binary_serializer.dart';
 
 class StorageService {
   final AppDatabase _db = AppDatabase();
@@ -22,17 +21,17 @@ class StorageService {
 
       return AppData(
         tasks: taskRows
-            .map((r) => ProtoSerializer.taskFromBytes(r.data))
+            .map((r) => BinarySerializer.taskFromBytes(r.data))
             .toList(),
         lists: listRows
-            .map((r) => ProtoSerializer.listFromBytes(r.data))
+            .map((r) => BinarySerializer.listFromBytes(r.data))
             .toList(),
         folders: folderRows
-            .map((r) => ProtoSerializer.folderFromBytes(r.data))
+            .map((r) => BinarySerializer.folderFromBytes(r.data))
             .toList(),
-        tags: tagRows.map((r) => ProtoSerializer.tagFromBytes(r.data)).toList(),
+        tags: tagRows.map((r) => BinarySerializer.tagFromBytes(r.data)).toList(),
         smartLists: smartListRows
-            .map((r) => ProtoSerializer.smartListFromBytes(r.data))
+            .map((r) => BinarySerializer.smartListFromBytes(r.data))
             .toList(),
         lastModified: metaRow != null
             ? DateTime.parse(metaRow.value)
@@ -61,7 +60,7 @@ class StorageService {
           data.tasks.map(
             (t) => TaskEntriesCompanion.insert(
               id: t.id,
-              data: ProtoSerializer.taskToBytes(t),
+              data: BinarySerializer.taskToBytes(t),
             ),
           ),
         );
@@ -70,7 +69,7 @@ class StorageService {
           data.lists.map(
             (l) => ListEntriesCompanion.insert(
               id: l.id,
-              data: ProtoSerializer.listToBytes(l),
+              data: BinarySerializer.listToBytes(l),
             ),
           ),
         );
@@ -79,7 +78,7 @@ class StorageService {
           data.folders.map(
             (f) => FolderEntriesCompanion.insert(
               id: f.id,
-              data: ProtoSerializer.folderToBytes(f),
+              data: BinarySerializer.folderToBytes(f),
             ),
           ),
         );
@@ -88,7 +87,7 @@ class StorageService {
           data.tags.map(
             (t) => TagEntriesCompanion.insert(
               id: t.id,
-              data: ProtoSerializer.tagToBytes(t),
+              data: BinarySerializer.tagToBytes(t),
             ),
           ),
         );
@@ -97,7 +96,7 @@ class StorageService {
           data.smartLists.map(
             (s) => SmartListEntriesCompanion.insert(
               id: s.id,
-              data: ProtoSerializer.smartListToBytes(s),
+              data: BinarySerializer.smartListToBytes(s),
             ),
           ),
         );

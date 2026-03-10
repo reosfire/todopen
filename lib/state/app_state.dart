@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:todopen/utils/uuid128.dart';
 import 'package:uuid/uuid.dart';
 import 'package:app_links/app_links.dart';
 import '../models/app_data.dart';
@@ -10,9 +11,7 @@ import '../models/smart_list.dart';
 import '../services/storage_service.dart';
 import '../services/dropbox_service.dart';
 import '../services/sync_service.dart';
-import '../services/proto_serializer.dart';
-
-const _uuid = Uuid();
+import '../services/binary_serializer.dart';
 
 class AppState extends ChangeNotifier with WidgetsBindingObserver {
   final StorageService _storage = StorageService();
@@ -351,7 +350,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
       _syncService.pushEntity(
         'tasks',
         task.id,
-        ProtoSerializer.taskToBytes(task),
+        BinarySerializer.taskToBytes(task),
       );
     }
   }
@@ -370,7 +369,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     _syncService.pushEntity(
       'tasks',
       task.id,
-      ProtoSerializer.taskToBytes(task),
+      BinarySerializer.taskToBytes(task),
     );
   }
 
@@ -381,7 +380,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     _syncService.pushEntity(
       'tasks',
       task.id,
-      ProtoSerializer.taskToBytes(task),
+      BinarySerializer.taskToBytes(task),
     );
   }
 
@@ -395,7 +394,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
       _syncService.pushEntity(
         'tasks',
         task.id,
-        ProtoSerializer.taskToBytes(task),
+        BinarySerializer.taskToBytes(task),
       );
     }
   }
@@ -420,7 +419,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
       _syncService.pushEntity(
         'tasks',
         task.id,
-        ProtoSerializer.taskToBytes(task),
+        BinarySerializer.taskToBytes(task),
       );
     } else {
       // For non-recurring tasks, toggle moves the task between sections.
@@ -502,7 +501,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
       _syncService.pushEntity(
         'tasks',
         update.id,
-        ProtoSerializer.taskToBytes(update),
+        BinarySerializer.taskToBytes(update),
       );
     }
   }
@@ -523,7 +522,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     _syncService.pushEntity(
       'lists',
       list.id,
-      ProtoSerializer.listToBytes(list),
+      BinarySerializer.listToBytes(list),
     );
   }
 
@@ -534,7 +533,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     _syncService.pushEntity(
       'lists',
       list.id,
-      ProtoSerializer.listToBytes(list),
+      BinarySerializer.listToBytes(list),
     );
   }
 
@@ -563,7 +562,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
       _syncService.pushEntity(
         'lists',
         list.id,
-        ProtoSerializer.listToBytes(list),
+        BinarySerializer.listToBytes(list),
       );
     }
   }
@@ -584,7 +583,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     _syncService.pushEntity(
       'folders',
       folder.id,
-      ProtoSerializer.folderToBytes(folder),
+      BinarySerializer.folderToBytes(folder),
     );
   }
 
@@ -595,7 +594,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     _syncService.pushEntity(
       'folders',
       folder.id,
-      ProtoSerializer.folderToBytes(folder),
+      BinarySerializer.folderToBytes(folder),
     );
   }
 
@@ -611,7 +610,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
       _syncService.pushEntity(
         'lists',
         list.id,
-        ProtoSerializer.listToBytes(list),
+        BinarySerializer.listToBytes(list),
       );
     }
   }
@@ -629,7 +628,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
       _syncService.pushEntity(
         'folders',
         folder.id,
-        ProtoSerializer.folderToBytes(folder),
+        BinarySerializer.folderToBytes(folder),
       );
     }
   }
@@ -647,14 +646,14 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   Future<void> addTag(Tag tag) async {
     _data.tags.add(tag);
     await _save();
-    _syncService.pushEntity('tags', tag.id, ProtoSerializer.tagToBytes(tag));
+    _syncService.pushEntity('tags', tag.id, BinarySerializer.tagToBytes(tag));
   }
 
   Future<void> updateTag(Tag tag) async {
     final i = _data.tags.indexWhere((t) => t.id == tag.id);
     if (i >= 0) _data.tags[i] = tag;
     await _save();
-    _syncService.pushEntity('tags', tag.id, ProtoSerializer.tagToBytes(tag));
+    _syncService.pushEntity('tags', tag.id, BinarySerializer.tagToBytes(tag));
   }
 
   Future<void> deleteTag(String id) async {
@@ -671,7 +670,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
       _syncService.pushEntity(
         'tasks',
         task.id,
-        ProtoSerializer.taskToBytes(task),
+        BinarySerializer.taskToBytes(task),
       );
     }
   }
@@ -696,7 +695,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     _syncService.pushEntity(
       'smart_lists',
       smartList.id,
-      ProtoSerializer.smartListToBytes(smartList),
+      BinarySerializer.smartListToBytes(smartList),
     );
   }
 
@@ -707,7 +706,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     _syncService.pushEntity(
       'smart_lists',
       smartList.id,
-      ProtoSerializer.smartListToBytes(smartList),
+      BinarySerializer.smartListToBytes(smartList),
     );
   }
 
@@ -777,5 +776,5 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     notifyListeners();
   }
 
-  String newId() => _uuid.v4();
+  Uuid128 newId() => Uuid128.generateV4();
 }

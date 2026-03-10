@@ -1,33 +1,30 @@
 import 'dart:typed_data';
 import 'package:fixnum/fixnum.dart';
-import 'package:uuid/uuid.dart';
+import 'package:todopen/utils/uuid128.dart';
 import '../models/task.dart';
 import '../models/task_list.dart';
 import '../models/folder.dart';
 import '../models/tag.dart';
 import '../models/smart_list.dart';
 import '../models/recurrence.dart';
-import '../models/sync_index.dart';
-import '../proto/models.pb.dart';
 
 /// Converts between domain models and protobuf messages.
 ///
 /// Timestamps are stored as milliseconds since epoch (Int64).
 /// A value of 0 means "not set" for optional timestamps.
-class ProtoSerializer {
+class BinarySerializer {
   // ───── Helpers ─────
 
   static Int64 _toMs(DateTime dt) => Int64(dt.millisecondsSinceEpoch);
   static DateTime _fromMs(Int64 ms) =>
       DateTime.fromMillisecondsSinceEpoch(ms.toInt());
 
-  static Uint8List _uuidToBytes(String uuid) =>
-      Uint8List.fromList(Uuid.parse(uuid));
-  static String _uuidFromBytes(List<int> bytes) => Uuid.unparse(bytes);
+  static Uint8List _uuidToBytes(Uuid128 uuid) => uuid.toBytes();
+  static Uuid128 _uuidFromBytes(List<int> bytes) => Uuid128.fromBytes(Uint8List.fromList(bytes));
 
-  static Uint8List _optUuidToBytes(String? uuid) =>
+  static Uint8List _optUuidToBytes(Uuid128? uuid) =>
       uuid == null ? Uint8List(0) : _uuidToBytes(uuid);
-  static String? _optUuidFromBytes(List<int> bytes) =>
+  static Uuid128? _optUuidFromBytes(List<int> bytes) =>
       bytes.isEmpty ? null : _uuidFromBytes(bytes);
 
   // ───── RecurrenceRule ─────
@@ -244,29 +241,6 @@ class ProtoSerializer {
       iconCodePoint: p.iconCodePoint,
       colorValue: p.colorValue,
       filter: filterFromProto(p.filter),
-    );
-  }
-
-  // ───── SyncIndex ─────
-
-  static Uint8List syncIndexToBytes(SyncIndex index) {
-    return Uint8List.fromList(
-      ProtoSyncIndex(
-        entities: index.entities.entries.map(
-          (e) => MapEntry(e.key, _toMs(e.value)),
-        ),
-        deletions: index.deletions.entries.map(
-          (e) => MapEntry(e.key, _toMs(e.value)),
-        ),
-      ).writeToBuffer(),
-    );
-  }
-
-  static SyncIndex syncIndexFromBytes(Uint8List bytes) {
-    final p = ProtoSyncIndex.fromBuffer(bytes);
-    return SyncIndex(
-      entities: p.entities.map((k, v) => MapEntry(k, _fromMs(v))),
-      deletions: p.deletions.map((k, v) => MapEntry(k, _fromMs(v))),
     );
   }
 }

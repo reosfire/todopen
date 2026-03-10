@@ -1,7 +1,9 @@
-class Folder {
-  String id;
-  String name;
-  int order;
+import 'package:todopen/utils/uuid128.dart';
 
-  Folder({required this.id, required this.name, this.order = 0});
+class Folder {
+  Uuid128 id;
+  String name;
+
+
+  Folder({required this.id, required this.name});
 }

@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:todopen/utils/uuid128.dart';
 
 class Tag {
-  String id;
+  Uuid128 id;
   String name;
   int colorValue;
 
