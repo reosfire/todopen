@@ -1,6 +1,5 @@
 import 'dart:typed_data';
 import 'package:fixnum/fixnum.dart';
-import 'package:uuid/uuid.dart';
 import '../models/task.dart';
 import '../models/task_list.dart';
 import '../models/folder.dart';
@@ -9,6 +8,7 @@ import '../models/smart_list.dart';
 import '../models/recurrence.dart';
 import '../models/sync_index.dart';
 import '../proto/models.pb.dart';
+import '../utils/uuid128.dart';
 
 /// Converts between domain models and protobuf messages.
 ///
@@ -21,13 +21,13 @@ class ProtoSerializer {
   static DateTime _fromMs(Int64 ms) =>
       DateTime.fromMillisecondsSinceEpoch(ms.toInt());
 
-  static Uint8List _uuidToBytes(String uuid) =>
-      Uint8List.fromList(Uuid.parse(uuid));
-  static String _uuidFromBytes(List<int> bytes) => Uuid.unparse(bytes);
+  static Uint8List _uuidToBytes(Uuid128 uuid) => uuid.toBytes();
+  static Uuid128 _uuidFromBytes(List<int> bytes) =>
+      Uuid128.fromBytes(Uint8List.fromList(bytes));
 
-  static Uint8List _optUuidToBytes(String? uuid) =>
+  static Uint8List _optUuidToBytes(Uuid128? uuid) =>
       uuid == null ? Uint8List(0) : _uuidToBytes(uuid);
-  static String? _optUuidFromBytes(List<int> bytes) =>
+  static Uuid128? _optUuidFromBytes(List<int> bytes) =>
       bytes.isEmpty ? null : _uuidFromBytes(bytes);
 
   // ───── RecurrenceRule ─────

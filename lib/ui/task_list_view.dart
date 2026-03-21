@@ -3,10 +3,11 @@ import 'package:provider/provider.dart';
 import '../models/task.dart';
 import '../models/smart_list.dart';
 import '../state/app_state.dart';
+import '../utils/uuid128.dart';
 import 'sectioned_task_list.dart';
 
 class TaskListView extends StatelessWidget {
-  final String listId;
+  final Uuid128 listId;
   const TaskListView({super.key, required this.listId});
 
   @override

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/smart_list.dart';
 import '../state/app_state.dart';
+import '../utils/uuid128.dart';
 
 /// The filter types available for user-created smart lists.
 enum _EditorFilterType { overdue, dateRange, tags, completed, all }
@@ -17,7 +18,7 @@ class SmartListEditorDialog extends StatefulWidget {
 class _SmartListEditorDialogState extends State<SmartListEditorDialog> {
   late final TextEditingController _nameCtrl;
   _EditorFilterType _filterType = _EditorFilterType.all;
-  final Set<String> _tagIds = {};
+  final Set<Uuid128> _tagIds = {};
   DateTime? _dateFrom;
   DateTime? _dateTo;
 

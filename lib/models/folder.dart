@@ -1,5 +1,7 @@
+import '../utils/uuid128.dart';
+
 class Folder {
-  String id;
+  Uuid128 id;
   String name;
   int order;
 

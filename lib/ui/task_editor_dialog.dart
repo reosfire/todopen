@@ -4,11 +4,12 @@ import 'package:provider/provider.dart';
 import '../models/task.dart';
 import '../models/recurrence.dart';
 import '../state/app_state.dart';
+import '../utils/uuid128.dart';
 
 class TaskEditorDialog extends StatefulWidget {
   static const double dialogWidth = 400.0;
 
-  final String listId;
+  final Uuid128 listId;
   final Task? existingTask;
   final Offset clickPosition;
 
@@ -28,8 +29,8 @@ class _TaskEditorDialogState extends State<TaskEditorDialog> {
   late final TextEditingController _notesCtrl;
   DateTime? _scheduledDate;
   RecurrenceRule? _recurrence;
-  late Set<String> _tagIds;
-  late String _listId;
+  late Set<Uuid128> _tagIds;
+  late Uuid128 _listId;
   bool get _isEditing => widget.existingTask != null;
   final GlobalKey _dialogKey = GlobalKey();
   Offset? _calculatedPosition;
@@ -160,7 +161,7 @@ class _TaskEditorDialogState extends State<TaskEditorDialog> {
                     const SizedBox(height: 16),
 
                     // List picker
-                    DropdownButtonFormField<String>(
+                    DropdownButtonFormField<Uuid128>(
                       initialValue: _listId,
                       decoration: const InputDecoration(
                         labelText: 'List',
@@ -168,7 +169,7 @@ class _TaskEditorDialogState extends State<TaskEditorDialog> {
                       ),
                       items: state.lists
                           .map(
-                            (l) => DropdownMenuItem(
+                            (l) => DropdownMenuItem<Uuid128>(
                               value: l.id,
                               child: Text(l.name),
                             ),

@@ -1,10 +1,11 @@
 import 'dart:ui';
+import '../utils/uuid128.dart';
 
 class TaskList {
-  String id;
+  Uuid128 id;
   String name;
   int? colorValue;
-  String? folderId;
+  Uuid128? folderId;
   int order;
 
   TaskList({

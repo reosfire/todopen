@@ -3,6 +3,7 @@ import 'package:archive/archive.dart';
 import 'package:flutter/foundation.dart';
 import '../models/app_data.dart';
 import '../models/sync_index.dart';
+import '../utils/uuid128.dart';
 import 'dropbox_service.dart';
 import 'proto_serializer.dart';
 import 'storage_service.dart';
@@ -495,46 +496,46 @@ class SyncService {
   void _removeEntityFromData(AppData data, String key) {
     final slash = key.indexOf('/');
     final type = key.substring(0, slash);
-    final id = key.substring(slash + 1);
+    final uuid = Uuid128.fromString(key.substring(slash + 1));
     switch (type) {
       case 'tasks':
-        data.tasks.removeWhere((t) => t.id == id);
+        data.tasks.removeWhere((t) => t.id == uuid);
       case 'lists':
-        data.lists.removeWhere((l) => l.id == id);
+        data.lists.removeWhere((l) => l.id == uuid);
       case 'folders':
-        data.folders.removeWhere((f) => f.id == id);
+        data.folders.removeWhere((f) => f.id == uuid);
       case 'tags':
-        data.tags.removeWhere((t) => t.id == id);
+        data.tags.removeWhere((t) => t.id == uuid);
       case 'smart_lists':
-        data.smartLists.removeWhere((s) => s.id == id);
+        data.smartLists.removeWhere((s) => s.id == uuid);
     }
   }
 
   Uint8List? _extractEntityFromData(AppData data, String key) {
     final slash = key.indexOf('/');
     final type = key.substring(0, slash);
-    final id = key.substring(slash + 1);
+    final uuid = Uuid128.fromString(key.substring(slash + 1));
     try {
       switch (type) {
         case 'tasks':
           return ProtoSerializer.taskToBytes(
-            data.tasks.firstWhere((t) => t.id == id),
+            data.tasks.firstWhere((t) => t.id == uuid),
           );
         case 'lists':
           return ProtoSerializer.listToBytes(
-            data.lists.firstWhere((l) => l.id == id),
+            data.lists.firstWhere((l) => l.id == uuid),
           );
         case 'folders':
           return ProtoSerializer.folderToBytes(
-            data.folders.firstWhere((f) => f.id == id),
+            data.folders.firstWhere((f) => f.id == uuid),
           );
         case 'tags':
           return ProtoSerializer.tagToBytes(
-            data.tags.firstWhere((t) => t.id == id),
+            data.tags.firstWhere((t) => t.id == uuid),
           );
         case 'smart_lists':
           return ProtoSerializer.smartListToBytes(
-            data.smartLists.firstWhere((s) => s.id == id),
+            data.smartLists.firstWhere((s) => s.id == uuid),
           );
         default:
           return null;

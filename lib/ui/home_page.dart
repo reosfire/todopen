@@ -5,6 +5,7 @@ import '../state/app_state.dart';
 import '../models/task_list.dart';
 import '../models/folder.dart';
 import '../services/storage_service.dart';
+import '../utils/uuid128.dart';
 import 'task_list_view.dart';
 import 'smart_list_view.dart';
 import 'list_editor_dialog.dart';
@@ -22,9 +23,9 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  String? _selectedListId;
-  String? _selectedSmartListId;
-  Set<String> _expandedFolderIds = {};
+  Uuid128? _selectedListId;
+  Uuid128? _selectedSmartListId;
+  Set<Uuid128> _expandedFolderIds = {};
   final _storageService = StorageService();
 
   @override
@@ -48,7 +49,7 @@ class _HomePageState extends State<HomePage> {
     await _storageService.saveExpandedFolderIds(_expandedFolderIds);
   }
 
-  void _selectList(String id) {
+  void _selectList(Uuid128 id) {
     setState(() {
       _selectedListId = id;
       _selectedSmartListId = null;
@@ -56,7 +57,7 @@ class _HomePageState extends State<HomePage> {
     if (_isNarrow) Navigator.pop(context);
   }
 
-  void _selectSmartList(String id) {
+  void _selectSmartList(Uuid128 id) {
     setState(() {
       _selectedSmartListId = id;
       _selectedListId = null;
@@ -497,7 +498,7 @@ class _HomePageState extends State<HomePage> {
 
   void _reorderListsInFolder(
     AppState state,
-    String folderId,
+    Uuid128 folderId,
     List<TaskList> folderLists,
     int oldIndex,
     int newIndex,

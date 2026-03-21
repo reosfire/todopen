@@ -8,6 +8,7 @@ import '../models/sync_index.dart';
 import '../models/tag.dart';
 import '../models/task.dart';
 import '../models/task_list.dart';
+import '../utils/uuid128.dart';
 import 'app_database.dart';
 
 class StorageService {
@@ -45,9 +46,9 @@ class StorageService {
       final metaRow = results[8] as MetadataEntry?;
 
       // Group junction rows by parent id.
-      final tagIdsByTask = <String, Set<String>>{};
+      final tagIdsByTask = <String, Set<Uuid128>>{};
       for (final r in taskTagRows) {
-        tagIdsByTask.putIfAbsent(r.taskId, () => {}).add(r.tagId);
+        tagIdsByTask.putIfAbsent(r.taskId, () => {}).add(Uuid128.fromCompactString(r.tagId));
       }
 
       final completedDatesByTask = <String, Set<DateTime>>{};
@@ -55,18 +56,18 @@ class StorageService {
         completedDatesByTask.putIfAbsent(r.taskId, () => {}).add(r.date);
       }
 
-      final tagIdsBySmartList = <String, Set<String>>{};
+      final tagIdsBySmartList = <String, Set<Uuid128>>{};
       for (final r in smartListTagRows) {
         tagIdsBySmartList
             .putIfAbsent(r.smartListId, () => {})
-            .add(r.tagId);
+            .add(Uuid128.fromCompactString(r.tagId));
       }
 
       return AppData(
         tasks: taskRows
             .map(
               (r) => Task(
-                id: r.id,
+                id: Uuid128.fromCompactString(r.id),
                 title: r.title,
                 notes: r.notes,
                 isCompleted: r.isCompleted,
@@ -78,9 +79,9 @@ class StorageService {
                   r.recurrenceParam2,
                 ),
                 tagIds: tagIdsByTask[r.id] ?? {},
-                listId: r.listId,
-                previousTaskId: r.previousTaskId,
-                nextTaskId: r.nextTaskId,
+                listId: Uuid128.fromCompactString(r.listId),
+                previousTaskId: r.previousTaskId != null ? Uuid128.fromCompactString(r.previousTaskId!) : null,
+                nextTaskId: r.nextTaskId != null ? Uuid128.fromCompactString(r.nextTaskId!) : null,
                 completedDates: completedDatesByTask[r.id] ?? {},
               ),
             )
@@ -88,28 +89,28 @@ class StorageService {
         lists: listRows
             .map(
               (r) => TaskList(
-                id: r.id,
+                id: Uuid128.fromCompactString(r.id),
                 name: r.name,
                 colorValue: r.colorValue,
-                folderId: r.folderId,
+                folderId: r.folderId != null ? Uuid128.fromCompactString(r.folderId!) : null,
                 order: r.orderIndex,
               ),
             )
             .toList(),
         folders: folderRows
             .map(
-              (r) => Folder(id: r.id, name: r.name, order: r.orderIndex),
+              (r) => Folder(id: Uuid128.fromCompactString(r.id), name: r.name, order: r.orderIndex),
             )
             .toList(),
         tags: tagRows
             .map(
-              (r) => Tag(id: r.id, name: r.name, colorValue: r.colorValue),
+              (r) => Tag(id: Uuid128.fromCompactString(r.id), name: r.name, colorValue: r.colorValue),
             )
             .toList(),
         smartLists: smartListRows
             .map(
               (r) => SmartList(
-                id: r.id,
+                id: Uuid128.fromCompactString(r.id),
                 name: r.name,
                 iconCodePoint: r.iconCodePoint,
                 colorValue: r.colorValue,
@@ -151,15 +152,15 @@ class StorageService {
           data.tasks.map((t) {
             final (type, p1, p2) = _recurrenceToRow(t.recurrence);
             return TaskEntriesCompanion.insert(
-              id: t.id,
+              id: t.id.toCompactString(),
               title: t.title,
               notes: Value(t.notes),
               isCompleted: Value(t.isCompleted),
               createdAt: t.createdAt,
               scheduledDate: Value(t.scheduledDate),
-              listId: t.listId,
-              previousTaskId: Value(t.previousTaskId),
-              nextTaskId: Value(t.nextTaskId),
+              listId: t.listId.toCompactString(),
+              previousTaskId: Value(t.previousTaskId?.toCompactString()),
+              nextTaskId: Value(t.nextTaskId?.toCompactString()),
               recurrenceType: Value(type),
               recurrenceParam1: Value(p1),
               recurrenceParam2: Value(p2),
@@ -173,8 +174,8 @@ class StorageService {
           data.tasks.expand(
             (t) => t.tagIds.map(
               (tagId) => TaskTagEntriesCompanion.insert(
-                taskId: t.id,
-                tagId: tagId,
+                taskId: t.id.toCompactString(),
+                tagId: tagId.toCompactString(),
               ),
             ),
           ),
@@ -186,7 +187,7 @@ class StorageService {
           data.tasks.expand(
             (t) => t.completedDates.map(
               (d) => TaskCompletedDateEntriesCompanion.insert(
-                taskId: t.id,
+                taskId: t.id.toCompactString(),
                 date: d,
               ),
             ),
@@ -198,10 +199,10 @@ class StorageService {
           _db.listEntries,
           data.lists.map(
             (l) => ListEntriesCompanion.insert(
-              id: l.id,
+              id: l.id.toCompactString(),
               name: l.name,
               colorValue: Value(l.colorValue),
-              folderId: Value(l.folderId),
+              folderId: Value(l.folderId?.toCompactString()),
               orderIndex: Value(l.order),
             ),
           ),
@@ -212,7 +213,7 @@ class StorageService {
           _db.folderEntries,
           data.folders.map(
             (f) => FolderEntriesCompanion.insert(
-              id: f.id,
+              id: f.id.toCompactString(),
               name: f.name,
               orderIndex: Value(f.order),
             ),
@@ -224,7 +225,7 @@ class StorageService {
           _db.tagEntries,
           data.tags.map(
             (t) => TagEntriesCompanion.insert(
-              id: t.id,
+              id: t.id.toCompactString(),
               name: t.name,
               colorValue: t.colorValue,
             ),
@@ -237,7 +238,7 @@ class StorageService {
           data.smartLists.map((s) {
             final (type, dateFrom, dateTo) = _filterToRow(s.filter);
             return SmartListEntriesCompanion.insert(
-              id: s.id,
+              id: s.id.toCompactString(),
               name: s.name,
               iconCodePoint: s.iconCodePoint,
               colorValue: s.colorValue,
@@ -256,8 +257,8 @@ class StorageService {
               .expand(
                 (s) => (s.filter as TagsFilter).tagIds.map(
                   (tagId) => SmartListTagFilterEntriesCompanion.insert(
-                    smartListId: s.id,
-                    tagId: tagId,
+                    smartListId: s.id.toCompactString(),
+                    tagId: tagId.toCompactString(),
                   ),
                 ),
               ),
@@ -321,20 +322,20 @@ class StorageService {
 
   static const _expandedFoldersKey = 'expanded_folder_ids';
 
-  Future<Set<String>> loadExpandedFolderIds() async {
+  Future<Set<Uuid128>> loadExpandedFolderIds() async {
     final row = await (_db.select(_db.uiStateEntries)
           ..where((r) => r.key.equals(_expandedFoldersKey)))
         .getSingleOrNull();
     if (row == null) return {};
     final list = jsonDecode(row.value) as List;
-    return list.cast<String>().toSet();
+    return list.cast<String>().map(Uuid128.fromString).toSet();
   }
 
-  Future<void> saveExpandedFolderIds(Set<String> folderIds) async {
+  Future<void> saveExpandedFolderIds(Set<Uuid128> folderIds) async {
     await _db.into(_db.uiStateEntries).insertOnConflictUpdate(
           UiStateEntriesCompanion.insert(
             key: _expandedFoldersKey,
-            value: jsonEncode(folderIds.toList()),
+            value: jsonEncode(folderIds.map((id) => id.toCompactString()).toList()),
           ),
         );
   }
@@ -375,7 +376,7 @@ class StorageService {
     String type,
     DateTime? dateFrom,
     DateTime? dateTo,
-    Set<String> tagIds,
+    Set<Uuid128> tagIds,
   ) {
     return switch (type) {
       'today' => const TodayFilter(),

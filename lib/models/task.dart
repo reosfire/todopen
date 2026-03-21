@@ -1,19 +1,20 @@
+import '../utils/uuid128.dart';
 import 'recurrence.dart';
 
 class Task {
-  String id;
+  Uuid128 id;
   String title;
   String notes;
   bool isCompleted;
   DateTime createdAt;
   DateTime? scheduledDate;
   RecurrenceRule? recurrence;
-  Set<String> tagIds;
-  String listId;
+  Set<Uuid128> tagIds;
+  Uuid128 listId;
 
   // Intrusive linked list pointers for ordering tasks within a list.
-  String? previousTaskId;
-  String? nextTaskId;
+  Uuid128? previousTaskId;
+  Uuid128? nextTaskId;
 
   /// For recurring tasks: dates on which the task was explicitly completed.
   Set<DateTime> completedDates;
@@ -26,7 +27,7 @@ class Task {
     required this.createdAt,
     this.scheduledDate,
     this.recurrence,
-    Set<String>? tagIds,
+    Set<Uuid128>? tagIds,
     required this.listId,
     this.previousTaskId,
     this.nextTaskId,

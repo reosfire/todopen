@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:uuid/uuid.dart';
 import 'package:app_links/app_links.dart';
 import '../models/app_data.dart';
 import '../models/task.dart';
@@ -11,8 +10,7 @@ import '../services/storage_service.dart';
 import '../services/dropbox_service.dart';
 import '../services/sync_service.dart';
 import '../services/proto_serializer.dart';
-
-const _uuid = Uuid();
+import '../utils/uuid128.dart';
 
 class AppState extends ChangeNotifier with WidgetsBindingObserver {
   final StorageService _storage = StorageService();
@@ -46,16 +44,13 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     await dropboxService.init();
     await _syncService.init(_data);
 
-    // Initialize deep link handling for Android/iOS OAuth redirect
     _initDeepLinks();
 
-    // Set up callback for when remote changes arrive via longpoll.
     _syncService.onRemoteDataChanged = _onRemoteDataPulled;
 
     // Register lifecycle observer so we pause/resume polling.
     WidgetsBinding.instance.addObserver(this);
 
-    // Pull latest changes from server on startup and start polling.
     if (dropboxService.isSignedIn) {
       _pullAndStartPolling();
     }
@@ -85,7 +80,6 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
 
   /// Pull remote changes and (re)start the longpoll loop.
   Future<void> _pullAndStartPolling() async {
-    // Quick pull on open.
     final changed = await _syncService.pullRemoteChanges(_data);
     if (changed) {
       _ensureDefaults();
@@ -126,9 +120,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
         final success = await dropboxService.handleRedirectCode(code);
         if (success) {
           notifyListeners();
-          // Trigger initial sync after successful OAuth
           await sync();
-          // Start polling for remote changes.
           _syncService.startRemotePolling(() => _data);
         }
       }
@@ -137,7 +129,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
 
   void _ensureDefaults() {
     if (_data.lists.isEmpty) {
-      _data.lists.add(TaskList(id: _uuid.v4(), name: 'Inbox', order: 0));
+      _data.lists.add(TaskList(id: Uuid128.generateV4(), name: 'Inbox', order: 0));
     }
   }
 
@@ -149,13 +141,13 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
 
   // ───── Tasks ─────
 
-  List<Task> tasksForList(String listId) =>
+  List<Task> tasksForList(Uuid128 listId) =>
       _data.tasks.where((t) => t.listId == listId).toList();
 
   /// Get tasks for a list in their linked-list order.
   /// [completedSection] determines whether to return completed or pending tasks.
   List<Task> tasksForListOrdered(
-    String listId, {
+    Uuid128 listId, {
     required bool completedSection,
   }) {
     final allTasks = tasksForList(
@@ -185,7 +177,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     // Traverse the linked list from head.
     final ordered = <Task>[];
     Task? current = head;
-    final visited = <String>{};
+    final visited = <Uuid128>{};
 
     while (current != null && !visited.contains(current.id)) {
       ordered.add(current);
@@ -237,7 +229,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   /// [newNext] is the task that should come after it (null = move to tail).
   Future<void> reorderTask(Task task, Task? newPrevious, Task? newNext) async {
     // Track which tasks need updates and what their new links should be.
-    final taskUpdates = <String, ({String? prev, String? next})>{};
+    final taskUpdates = <Uuid128, ({Uuid128? prev, Uuid128? next})>{};
 
     // 1. Remove task from its current position.
     final oldPrev = task.previousTaskId != null
@@ -297,8 +289,8 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   /// Helper to create a copy of a task with updated link pointers.
   Task copyTask(
     Task task, {
-    required String? previousTaskId,
-    required String? nextTaskId,
+    required Uuid128? previousTaskId,
+    required Uuid128? nextTaskId,
   }) {
     return Task(
       id: task.id,
@@ -350,13 +342,13 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     for (final task in updates) {
       _syncService.pushEntity(
         'tasks',
-        task.id,
+        task.id.toString(),
         ProtoSerializer.taskToBytes(task),
       );
     }
   }
 
-  Task? taskById(String id) {
+  Task? taskById(Uuid128 id) {
     try {
       return _data.tasks.firstWhere((t) => t.id == id);
     } catch (_) {
@@ -369,7 +361,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     await _save();
     _syncService.pushEntity(
       'tasks',
-      task.id,
+      task.id.toString(),
       ProtoSerializer.taskToBytes(task),
     );
   }
@@ -380,7 +372,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     await _save();
     _syncService.pushEntity(
       'tasks',
-      task.id,
+      task.id.toString(),
       ProtoSerializer.taskToBytes(task),
     );
   }
@@ -394,16 +386,16 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     for (final task in tasks) {
       _syncService.pushEntity(
         'tasks',
-        task.id,
+        task.id.toString(),
         ProtoSerializer.taskToBytes(task),
       );
     }
   }
 
-  Future<void> deleteTask(String id) async {
+  Future<void> deleteTask(Uuid128 id) async {
     _data.tasks.removeWhere((t) => t.id == id);
     await _save();
-    _syncService.pushDeletion('tasks', id);
+    _syncService.pushDeletion('tasks', id.toString());
   }
 
   Future<void> toggleTask(Task task, {DateTime? onDate}) async {
@@ -419,7 +411,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
       await _save();
       _syncService.pushEntity(
         'tasks',
-        task.id,
+        task.id.toString(),
         ProtoSerializer.taskToBytes(task),
       );
     } else {
@@ -501,7 +493,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     for (final update in updates) {
       _syncService.pushEntity(
         'tasks',
-        update.id,
+        update.id.toString().toString(),
         ProtoSerializer.taskToBytes(update),
       );
     }
@@ -509,7 +501,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
 
   // ───── Lists ─────
 
-  TaskList? listById(String id) {
+  TaskList? listById(Uuid128 id) {
     try {
       return _data.lists.firstWhere((l) => l.id == id);
     } catch (_) {
@@ -522,7 +514,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     await _save();
     _syncService.pushEntity(
       'lists',
-      list.id,
+      list.id.toString(),
       ProtoSerializer.listToBytes(list),
     );
   }
@@ -533,12 +525,12 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     await _save();
     _syncService.pushEntity(
       'lists',
-      list.id,
+      list.id.toString(),
       ProtoSerializer.listToBytes(list),
     );
   }
 
-  Future<void> deleteList(String id) async {
+  Future<void> deleteList(Uuid128 id) async {
     final taskIds = _data.tasks
         .where((t) => t.listId == id)
         .map((t) => t.id)
@@ -546,9 +538,9 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     _data.lists.removeWhere((l) => l.id == id);
     _data.tasks.removeWhere((t) => t.listId == id);
     await _save();
-    _syncService.pushDeletion('lists', id);
+    _syncService.pushDeletion('lists', id.toString());
     for (final tid in taskIds) {
-      _syncService.pushDeletion('tasks', tid);
+      _syncService.pushDeletion('tasks', tid.toString());
     }
   }
 
@@ -562,7 +554,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     for (final list in reorderedLists) {
       _syncService.pushEntity(
         'lists',
-        list.id,
+        list.id.toString(),
         ProtoSerializer.listToBytes(list),
       );
     }
@@ -570,7 +562,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
 
   // ───── Folders ─────
 
-  Folder? folderById(String id) {
+  Folder? folderById(Uuid128 id) {
     try {
       return _data.folders.firstWhere((f) => f.id == id);
     } catch (_) {
@@ -583,7 +575,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     await _save();
     _syncService.pushEntity(
       'folders',
-      folder.id,
+      folder.id.toString(),
       ProtoSerializer.folderToBytes(folder),
     );
   }
@@ -594,23 +586,23 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     await _save();
     _syncService.pushEntity(
       'folders',
-      folder.id,
+      folder.id.toString(),
       ProtoSerializer.folderToBytes(folder),
     );
   }
 
-  Future<void> deleteFolder(String id) async {
+  Future<void> deleteFolder(Uuid128 id) async {
     final affectedLists = _data.lists.where((l) => l.folderId == id).toList();
     for (final list in affectedLists) {
       list.folderId = null;
     }
     _data.folders.removeWhere((f) => f.id == id);
     await _save();
-    _syncService.pushDeletion('folders', id);
+    _syncService.pushDeletion('folders', id.toString());
     for (final list in affectedLists) {
       _syncService.pushEntity(
         'lists',
-        list.id,
+        list.id.toString(),
         ProtoSerializer.listToBytes(list),
       );
     }
@@ -628,7 +620,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     for (final folder in reorderedFolders) {
       _syncService.pushEntity(
         'folders',
-        folder.id,
+        folder.id.toString(),
         ProtoSerializer.folderToBytes(folder),
       );
     }
@@ -636,7 +628,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
 
   // ───── Tags ─────
 
-  Tag? tagById(String id) {
+  Tag? tagById(Uuid128 id) {
     try {
       return _data.tags.firstWhere((t) => t.id == id);
     } catch (_) {
@@ -647,17 +639,17 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   Future<void> addTag(Tag tag) async {
     _data.tags.add(tag);
     await _save();
-    _syncService.pushEntity('tags', tag.id, ProtoSerializer.tagToBytes(tag));
+    _syncService.pushEntity('tags', tag.id.toString(), ProtoSerializer.tagToBytes(tag));
   }
 
   Future<void> updateTag(Tag tag) async {
     final i = _data.tags.indexWhere((t) => t.id == tag.id);
     if (i >= 0) _data.tags[i] = tag;
     await _save();
-    _syncService.pushEntity('tags', tag.id, ProtoSerializer.tagToBytes(tag));
+    _syncService.pushEntity('tags', tag.id.toString(), ProtoSerializer.tagToBytes(tag));
   }
 
-  Future<void> deleteTag(String id) async {
+  Future<void> deleteTag(Uuid128 id) async {
     final affectedTasks = _data.tasks
         .where((t) => t.tagIds.contains(id))
         .toList();
@@ -666,11 +658,11 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     }
     _data.tags.removeWhere((t) => t.id == id);
     await _save();
-    _syncService.pushDeletion('tags', id);
+    _syncService.pushDeletion('tags', id.toString());
     for (final task in affectedTasks) {
       _syncService.pushEntity(
         'tasks',
-        task.id,
+        task.id.toString(),
         ProtoSerializer.taskToBytes(task),
       );
     }
@@ -678,7 +670,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
 
   // ───── Smart Lists ─────
 
-  SmartList? smartListById(String id) {
+  SmartList? smartListById(Uuid128 id) {
     // Check built-in smart lists first.
     for (final sl in builtInSmartLists) {
       if (sl.id == id) return sl;
@@ -695,7 +687,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     await _save();
     _syncService.pushEntity(
       'smart_lists',
-      smartList.id,
+      smartList.id.toString(),
       ProtoSerializer.smartListToBytes(smartList),
     );
   }
@@ -706,15 +698,15 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     await _save();
     _syncService.pushEntity(
       'smart_lists',
-      smartList.id,
+      smartList.id.toString(),
       ProtoSerializer.smartListToBytes(smartList),
     );
   }
 
-  Future<void> deleteSmartList(String id) async {
+  Future<void> deleteSmartList(Uuid128 id) async {
     _data.smartLists.removeWhere((s) => s.id == id);
     await _save();
-    _syncService.pushDeletion('smart_lists', id);
+    _syncService.pushDeletion('smart_lists', id.toString());
   }
 
   // ───── Sync ─────
@@ -777,5 +769,5 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     notifyListeners();
   }
 
-  String newId() => _uuid.v4();
+  Uuid128 newId() => Uuid128.generateV4();
 }

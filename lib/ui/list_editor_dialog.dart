@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/task_list.dart';
 import '../state/app_state.dart';
+import '../utils/uuid128.dart';
 
 class ListEditorDialog extends StatefulWidget {
   final TaskList? taskList;
@@ -13,7 +14,7 @@ class ListEditorDialog extends StatefulWidget {
 
 class _ListEditorDialogState extends State<ListEditorDialog> {
   late final TextEditingController _nameCtrl;
-  String? _folderId;
+  Uuid128? _folderId;
   int? _colorValue;
 
   static const _colors = [
@@ -65,16 +66,16 @@ class _ListEditorDialogState extends State<ListEditorDialog> {
               autofocus: true,
             ),
             const SizedBox(height: 16),
-            DropdownButtonFormField<String?>(
+            DropdownButtonFormField<Uuid128?>(
               initialValue: _folderId,
               decoration: const InputDecoration(
                 labelText: 'Folder',
                 border: OutlineInputBorder(),
               ),
               items: [
-                const DropdownMenuItem(value: null, child: Text('None')),
+                const DropdownMenuItem<Uuid128?>(value: null, child: Text('None')),
                 ...state.folders.map(
-                  (f) => DropdownMenuItem(value: f.id, child: Text(f.name)),
+                  (f) => DropdownMenuItem<Uuid128?>(value: f.id, child: Text(f.name)),
                 ),
               ],
               onChanged: (v) => setState(() => _folderId = v),

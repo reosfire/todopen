@@ -1,4 +1,6 @@
+import 'package:fixnum/fixnum.dart';
 import 'package:flutter/material.dart';
+import '../utils/uuid128.dart';
 import 'task.dart';
 
 /// A section of tasks to display in a grouped list view.
@@ -311,7 +313,7 @@ class DateRangeFilter extends SmartListFilter {
 }
 
 class TagsFilter extends SmartListFilter {
-  final Set<String> tagIds;
+  final Set<Uuid128> tagIds;
 
   const TagsFilter({required this.tagIds});
 
@@ -401,7 +403,7 @@ int _byScheduledDate(Task a, Task b) {
 // ───── SmartList wrapper ─────
 
 class SmartList {
-  String id;
+  Uuid128 id;
   String name;
   int iconCodePoint;
   int colorValue;
@@ -420,24 +422,28 @@ class SmartList {
 }
 
 // ───── Hardcoded built-in smart lists ─────
+// Fixed non-random Uuid128 values so built-ins are always the same.
+final _builtinTodayId = Uuid128(Int64.ZERO, Int64(1));
+final _builtinTomorrowId = Uuid128(Int64.ZERO, Int64(2));
+final _builtinUpcomingId = Uuid128(Int64.ZERO, Int64(3));
 
 final builtInSmartLists = [
   SmartList(
-    id: 'builtin_today',
+    id: _builtinTodayId,
     name: 'Today',
     iconCodePoint: 0xf06bb, // Icons.today
     colorValue: 0xFF66BB6A,
     filter: const TodayFilter(),
   ),
   SmartList(
-    id: 'builtin_tomorrow',
+    id: _builtinTomorrowId,
     name: 'Tomorrow',
     iconCodePoint: 0xf0504, // Icons.wb_sunny_outlined
     colorValue: 0xFFFFA726,
     filter: const TomorrowFilter(),
   ),
   SmartList(
-    id: 'builtin_upcoming',
+    id: _builtinUpcomingId,
     name: 'Upcoming',
     iconCodePoint: 0xf07dc, // Icons.upcoming
     colorValue: 0xFF42A5F5,
