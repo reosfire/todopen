@@ -328,7 +328,7 @@ class StorageService {
         .getSingleOrNull();
     if (row == null) return {};
     final list = jsonDecode(row.value) as List;
-    return list.cast<String>().map(Uuid128.fromString).toSet();
+    return list.cast<String>().map(Uuid128.fromCompactString).toSet();
   }
 
   Future<void> saveExpandedFolderIds(Set<Uuid128> folderIds) async {
