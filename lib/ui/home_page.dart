@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../state/app_state.dart';
@@ -64,6 +65,11 @@ class _HomePageState extends State<HomePage> {
   }
 
   bool get _isNarrow => MediaQuery.of(context).size.width < 600;
+
+  bool get _isMobile =>
+      !kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.android ||
+          defaultTargetPlatform == TargetPlatform.iOS);
 
   @override
   Widget build(BuildContext context) {
@@ -386,14 +392,22 @@ class _HomePageState extends State<HomePage> {
                 );
               },
               children: folderLists.asMap().entries.map((e) {
-                return ReorderableDragStartListener(
-                  key: ValueKey('list_${e.value.id}_in_folder'),
-                  index: e.key,
-                  child: Padding(
-                    padding: const EdgeInsets.only(left: 16),
-                    child: _buildListTile(state, e.value),
-                  ),
+                final child = Padding(
+                  padding: const EdgeInsets.only(left: 16),
+                  child: _buildListTile(state, e.value),
                 );
+                final key = ValueKey('list_${e.value.id}_in_folder');
+                return _isMobile
+                    ? ReorderableDelayedDragStartListener(
+                        key: key,
+                        index: e.key,
+                        child: child,
+                      )
+                    : ReorderableDragStartListener(
+                        key: key,
+                        index: e.key,
+                        child: child,
+                      );
               }).toList(),
             ),
           ],
@@ -419,18 +433,30 @@ class _HomePageState extends State<HomePage> {
         },
         children: [
           ...orphanWidgets.asMap().entries.map(
-            (e) => ReorderableDragStartListener(
-              key: e.value.key!,
-              index: e.key,
-              child: e.value,
-            ),
+            (e) => _isMobile
+                ? ReorderableDelayedDragStartListener(
+                    key: e.value.key!,
+                    index: e.key,
+                    child: e.value,
+                  )
+                : ReorderableDragStartListener(
+                    key: e.value.key!,
+                    index: e.key,
+                    child: e.value,
+                  ),
           ),
           ...folderWidgets.asMap().entries.map(
-            (e) => ReorderableDragStartListener(
-              key: e.value.key!,
-              index: orphanWidgets.length + e.key,
-              child: e.value,
-            ),
+            (e) => _isMobile
+                ? ReorderableDelayedDragStartListener(
+                    key: e.value.key!,
+                    index: orphanWidgets.length + e.key,
+                    child: e.value,
+                  )
+                : ReorderableDragStartListener(
+                    key: e.value.key!,
+                    index: orphanWidgets.length + e.key,
+                    child: e.value,
+                  ),
           ),
         ],
       ),

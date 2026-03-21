@@ -345,18 +345,28 @@ class _TaskTileState extends State<TaskTile> {
                 ),
               ],
             ),
-            title: TextField(
-              controller: _controller,
-              focusNode: _focusNode,
-              style: Theme.of(context).textTheme.bodyLarge,
-              decoration: const InputDecoration(
-                border: InputBorder.none,
-                isDense: true,
-                contentPadding: EdgeInsets.zero,
-              ),
-              onSubmitted: (_) => _saveTitle(),
-              onTapOutside: (_) => _saveTitle(),
-            ),
+            title: _isEditing
+                ? TextField(
+                    controller: _controller,
+                    focusNode: _focusNode,
+                    style: Theme.of(context).textTheme.bodyLarge,
+                    decoration: const InputDecoration(
+                      border: InputBorder.none,
+                      isDense: true,
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                    onSubmitted: (_) => _saveTitle(),
+                    onTapOutside: (_) => _saveTitle(),
+                  )
+                : Text(
+                    task.title,
+                    style: TextStyle(
+                      decoration: completed ? TextDecoration.lineThrough : null,
+                      color: completed
+                          ? Theme.of(context).colorScheme.onSurfaceVariant
+                          : null,
+                    ),
+                  ),
             subtitle: _buildSubtitle(context, state),
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
