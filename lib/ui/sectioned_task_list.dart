@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../models/task.dart';
@@ -225,6 +226,8 @@ class _TaskTileState extends State<TaskTile> {
   late TextEditingController _controller;
   final FocusNode _focusNode = FocusNode();
   final GlobalKey _moreButtonKey = GlobalKey();
+  final GlobalKey _titleTextKey = GlobalKey();
+  Offset? _tapDownPosition;
 
   @override
   void initState() {
@@ -245,9 +248,17 @@ class _TaskTileState extends State<TaskTile> {
   }
 
   void _startEditing() {
-    _controller.selection = TextSelection.collapsed(
-      offset: _controller.text.length,
-    );
+    int cursorOffset = _controller.text.length;
+    final tapPos = _tapDownPosition;
+    if (tapPos != null) {
+      final ro = _titleTextKey.currentContext?.findRenderObject();
+      if (ro is RenderParagraph) {
+        final localOffset = ro.globalToLocal(tapPos);
+        cursorOffset = ro.getPositionForOffset(localOffset).offset;
+      }
+      _tapDownPosition = null;
+    }
+    _controller.selection = TextSelection.collapsed(offset: cursorOffset);
     setState(() => _isEditing = true);
   }
 
@@ -356,13 +367,20 @@ class _TaskTileState extends State<TaskTile> {
                     onSubmitted: (_) => _saveTitle(),
                     onTapOutside: (_) => _saveTitle(),
                   )
-                : Text(
-                    task.title,
-                    style: TextStyle(
-                      decoration: completed ? TextDecoration.lineThrough : null,
-                      color: completed
-                          ? Theme.of(context).colorScheme.onSurfaceVariant
-                          : null,
+                : Listener(
+                    onPointerDown: (event) {
+                      _tapDownPosition = event.position;
+                    },
+                    child: Text(
+                      key: _titleTextKey,
+                      task.title,
+                      style: TextStyle(
+                        decoration:
+                            completed ? TextDecoration.lineThrough : null,
+                        color: completed
+                            ? Theme.of(context).colorScheme.onSurfaceVariant
+                            : null,
+                      ),
                     ),
                   ),
             subtitle: _buildSubtitle(context, state),
