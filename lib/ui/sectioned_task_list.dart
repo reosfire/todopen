@@ -244,14 +244,10 @@ class _TaskTileState extends State<TaskTile> {
   }
 
   void _startEditing() {
+    _controller.selection = TextSelection.collapsed(
+      offset: _controller.text.length,
+    );
     setState(() => _isEditing = true);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _focusNode.requestFocus();
-      _controller.selection = TextSelection(
-        baseOffset: 0,
-        extentOffset: _controller.text.length,
-      );
-    });
   }
 
   void _saveTitle() {
@@ -349,6 +345,7 @@ class _TaskTileState extends State<TaskTile> {
                 ? TextField(
                     controller: _controller,
                     focusNode: _focusNode,
+                    autofocus: true,
                     style: Theme.of(context).textTheme.bodyLarge,
                     decoration: const InputDecoration(
                       border: InputBorder.none,
