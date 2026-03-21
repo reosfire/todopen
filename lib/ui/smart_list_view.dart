@@ -17,7 +17,6 @@ class SmartListView extends StatelessWidget {
 
     return SectionedTaskList(
       sections: sections,
-      reorderable: false,
       showListName: true,
       inputHint: filter.hasInput ? 'Add a task...' : null,
       onAddTask: filter.hasInput

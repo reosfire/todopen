@@ -7,15 +7,9 @@ import '../state/app_state.dart';
 import 'task_editor_dialog.dart';
 
 /// A common task list component that displays tasks organized in sections.
-///
-/// Supports both reorderable (regular lists) and non-reorderable (smart lists)
-/// modes via the [reorderable] flag.
 class SectionedTaskList extends StatefulWidget {
   /// The sections of tasks to display.
   final List<TaskSection> sections;
-
-  /// Whether tasks can be reordered via drag-and-drop.
-  final bool reorderable;
 
   /// Whether to show the list name in each task tile's subtitle.
   final bool showListName;
@@ -26,7 +20,7 @@ class SectionedTaskList extends StatefulWidget {
   /// Callback when a new task is created via the input field.
   final void Function(String title)? onAddTask;
 
-  /// Callback when tasks in a section are reordered.
+  /// Callback when tasks in a section are reordered. If null, reordering is disabled.
   final void Function(int sectionIndex, int oldIndex, int newIndex)? onReorder;
 
   /// The date to use for recurring task completion toggle.
@@ -35,7 +29,6 @@ class SectionedTaskList extends StatefulWidget {
   const SectionedTaskList({
     super.key,
     required this.sections,
-    this.reorderable = false,
     this.showListName = false,
     this.inputHint,
     this.onAddTask,
@@ -124,17 +117,13 @@ class _SectionedTaskListState extends State<SectionedTaskList> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(
-                        widget.reorderable
-                            ? Icons.check_circle_outline
-                            : Icons.inbox_outlined,
+                        Icons.inbox_outlined,
                         size: 64,
                         color: Theme.of(context).colorScheme.outlineVariant,
                       ),
                       const SizedBox(height: 12),
                       Text(
-                        widget.reorderable
-                            ? 'No tasks yet'
-                            : 'No matching tasks',
+                        'No tasks',
                         style: Theme.of(context).textTheme.bodyLarge,
                       ),
                     ],
@@ -167,7 +156,7 @@ class _SectionedTaskListState extends State<SectionedTaskList> {
         );
       }
 
-      if (widget.reorderable) {
+      if (widget.onReorder != null) {
         final sectionIndex = i;
         widgets.add(
           ReorderableListView(
@@ -175,7 +164,7 @@ class _SectionedTaskListState extends State<SectionedTaskList> {
             physics: const NeverScrollableScrollPhysics(),
             buildDefaultDragHandles: false,
             onReorder: (oldIndex, newIndex) {
-              widget.onReorder?.call(sectionIndex, oldIndex, newIndex);
+              widget.onReorder!.call(sectionIndex, oldIndex, newIndex);
             },
             children: [
               for (var j = 0; j < section.tasks.length; j++)
@@ -194,7 +183,7 @@ class _SectionedTaskListState extends State<SectionedTaskList> {
         for (final task in section.tasks) {
           widgets.add(
             TaskTile(
-              key: ValueKey('s${i}_${task.id}'),
+              key: ValueKey(task.id),
               task: task,
               index: 0,
               reorderable: false,
@@ -255,7 +244,6 @@ class _TaskTileState extends State<TaskTile> {
   }
 
   void _startEditing() {
-    if (!widget.reorderable) return;
     setState(() => _isEditing = true);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _focusNode.requestFocus();
@@ -351,36 +339,24 @@ class _TaskTileState extends State<TaskTile> {
                   value: completed,
                   onChanged: (_) =>
                       state.toggleTask(task, onDate: widget.toggleDate),
-                  shape: widget.reorderable
-                      ? RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(4),
-                        )
-                      : const CircleBorder(),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(4),
+                  ),
                 ),
               ],
             ),
-            title: _isEditing && widget.reorderable
-                ? TextField(
-                    controller: _controller,
-                    focusNode: _focusNode,
-                    style: Theme.of(context).textTheme.bodyLarge,
-                    decoration: const InputDecoration(
-                      border: InputBorder.none,
-                      isDense: true,
-                      contentPadding: EdgeInsets.zero,
-                    ),
-                    onSubmitted: (_) => _saveTitle(),
-                    onTapOutside: (_) => _saveTitle(),
-                  )
-                : Text(
-                    task.title,
-                    style: TextStyle(
-                      decoration: completed ? TextDecoration.lineThrough : null,
-                      color: completed
-                          ? Theme.of(context).colorScheme.onSurfaceVariant
-                          : null,
-                    ),
-                  ),
+            title: TextField(
+              controller: _controller,
+              focusNode: _focusNode,
+              style: Theme.of(context).textTheme.bodyLarge,
+              decoration: const InputDecoration(
+                border: InputBorder.none,
+                isDense: true,
+                contentPadding: EdgeInsets.zero,
+              ),
+              onSubmitted: (_) => _saveTitle(),
+              onTapOutside: (_) => _saveTitle(),
+            ),
             subtitle: _buildSubtitle(context, state),
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
@@ -400,7 +376,7 @@ class _TaskTileState extends State<TaskTile> {
                     padding: const EdgeInsets.only(right: 8),
                     child: Icon(
                       Icons.repeat,
-                      size: widget.reorderable ? 20 : 16,
+                      size: 16,
                       color: Theme.of(
                         context,
                       ).colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
@@ -428,21 +404,7 @@ class _TaskTileState extends State<TaskTile> {
                 ),
               ],
             ),
-            onTap: () {
-              if (widget.reorderable && !_isEditing) {
-                _startEditing();
-              } else if (!widget.reorderable) {
-                final RenderBox box = context.findRenderObject() as RenderBox;
-                final pos = box.localToGlobal(Offset.zero);
-                _showEditDialog(
-                  context,
-                  Offset(
-                    pos.dx + box.size.width / 2,
-                    pos.dy + box.size.height / 2,
-                  ),
-                );
-              }
-            },
+            onTap: _startEditing,
           ),
         ),
       ),

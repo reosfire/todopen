@@ -21,7 +21,6 @@ class TaskListView extends StatelessWidget {
         if (completed.isNotEmpty)
           TaskSection(header: 'Completed', tasks: completed),
       ],
-      reorderable: true,
       inputHint: 'Add a task...',
       onAddTask: (title) => _addTask(state, title),
       onReorder: (sectionIndex, oldIndex, newIndex) {
