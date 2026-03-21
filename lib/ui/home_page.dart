@@ -31,18 +31,32 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
-    _loadExpandedFolders();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final state = context.read<AppState>();
-      if (state.lists.isNotEmpty && _selectedListId == null) {
-        setState(() => _selectedListId = state.lists.first.id);
-      }
-    });
+    _loadUiState();
   }
 
-  Future<void> _loadExpandedFolders() async {
-    final ids = await _storageService.loadExpandedFolderIds();
-    setState(() => _expandedFolderIds = ids);
+  Future<void> _loadUiState() async {
+    final results = await Future.wait([
+      _storageService.loadExpandedFolderIds(),
+      _storageService.loadSelectedListId(),
+      _storageService.loadSelectedSmartListId(),
+    ]);
+    final ids = results[0] as Set<Uuid128>;
+    final listId = results[1] as Uuid128?;
+    final smartListId = results[2] as Uuid128?;
+    setState(() {
+      _expandedFolderIds = ids;
+      _selectedListId = listId;
+      _selectedSmartListId = smartListId;
+    });
+    // If nothing was saved before, fall back to the first list.
+    if (_selectedListId == null && _selectedSmartListId == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final state = context.read<AppState>();
+        if (state.lists.isNotEmpty) {
+          setState(() => _selectedListId = state.lists.first.id);
+        }
+      });
+    }
   }
 
   Future<void> _saveExpandedFolders() async {
@@ -54,6 +68,8 @@ class _HomePageState extends State<HomePage> {
       _selectedListId = id;
       _selectedSmartListId = null;
     });
+    _storageService.saveSelectedListId(id);
+    _storageService.saveSelectedSmartListId(null);
     if (_isNarrow) Navigator.pop(context);
   }
 
@@ -62,6 +78,8 @@ class _HomePageState extends State<HomePage> {
       _selectedSmartListId = id;
       _selectedListId = null;
     });
+    _storageService.saveSelectedSmartListId(id);
+    _storageService.saveSelectedListId(null);
     if (_isNarrow) Navigator.pop(context);
   }
 

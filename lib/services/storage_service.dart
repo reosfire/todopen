@@ -321,6 +321,8 @@ class StorageService {
   // ───── UI state (local only) ─────
 
   static const _expandedFoldersKey = 'expanded_folder_ids';
+  static const _selectedListKey = 'selected_list_id';
+  static const _selectedSmartListKey = 'selected_smart_list_id';
 
   Future<Set<Uuid128>> loadExpandedFolderIds() async {
     final row = await (_db.select(_db.uiStateEntries)
@@ -338,6 +340,52 @@ class StorageService {
             value: jsonEncode(folderIds.map((id) => id.toCompactString()).toList()),
           ),
         );
+  }
+
+  Future<Uuid128?> loadSelectedListId() async {
+    final row = await (_db.select(_db.uiStateEntries)
+          ..where((r) => r.key.equals(_selectedListKey)))
+        .getSingleOrNull();
+    if (row == null) return null;
+    return Uuid128.fromCompactString(row.value);
+  }
+
+  Future<void> saveSelectedListId(Uuid128? id) async {
+    if (id == null) {
+      await (_db.delete(_db.uiStateEntries)
+            ..where((r) => r.key.equals(_selectedListKey)))
+          .go();
+    } else {
+      await _db.into(_db.uiStateEntries).insertOnConflictUpdate(
+            UiStateEntriesCompanion.insert(
+              key: _selectedListKey,
+              value: id.toCompactString(),
+            ),
+          );
+    }
+  }
+
+  Future<Uuid128?> loadSelectedSmartListId() async {
+    final row = await (_db.select(_db.uiStateEntries)
+          ..where((r) => r.key.equals(_selectedSmartListKey)))
+        .getSingleOrNull();
+    if (row == null) return null;
+    return Uuid128.fromCompactString(row.value);
+  }
+
+  Future<void> saveSelectedSmartListId(Uuid128? id) async {
+    if (id == null) {
+      await (_db.delete(_db.uiStateEntries)
+            ..where((r) => r.key.equals(_selectedSmartListKey)))
+          .go();
+    } else {
+      await _db.into(_db.uiStateEntries).insertOnConflictUpdate(
+            UiStateEntriesCompanion.insert(
+              key: _selectedSmartListKey,
+              value: id.toCompactString(),
+            ),
+          );
+    }
   }
 
   // ───── Recurrence helpers ─────
