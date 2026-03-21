@@ -224,6 +224,7 @@ class _TaskTileState extends State<TaskTile> {
   bool _isEditing = false;
   late TextEditingController _controller;
   final FocusNode _focusNode = FocusNode();
+  final GlobalKey _moreButtonKey = GlobalKey();
 
   @override
   void initState() {
@@ -390,13 +391,14 @@ class _TaskTileState extends State<TaskTile> {
                     ),
                   ),
                 IconButton(
+                  key: _moreButtonKey,
                   icon: Icon(
                     Icons.more_horiz,
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
                   onPressed: () {
                     final RenderBox button =
-                        context.findRenderObject() as RenderBox;
+                        _moreButtonKey.currentContext!.findRenderObject() as RenderBox;
                     final Offset buttonPosition = button.localToGlobal(
                       Offset.zero,
                     );
