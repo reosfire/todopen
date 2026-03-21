@@ -713,6 +713,10 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
 
   Future<void> signIn() async {
     await dropboxService.signIn();
+    if (dropboxService.isSignedIn) {
+      notifyListeners();
+      _pullAndStartPolling();
+    }
   }
 
   Future<void> signOut() async {

@@ -31,6 +31,15 @@ class DropboxService {
     final code = web_auth.getAuthCodeFromUrl();
     if (code != null) {
       web_auth.clearUrlAuthCode();
+
+      if (web_auth.isInPopup()) {
+        // Running inside the OAuth popup — relay the code to the parent window
+        // via BroadcastChannel and close this popup.
+        web_auth.sendCodeToOpenerAndClose(code);
+        return;
+      }
+
+      // Fallback: same-tab redirect (mobile deep-link, or legacy web flow).
       final verifier = await _loadCodeVerifier();
       if (verifier != null) {
         await _exchangeCode(code, verifier);
@@ -40,7 +49,8 @@ class DropboxService {
 
   // ───── Sign-in / out ─────
 
-  /// Opens the Dropbox OAuth page in the browser.
+  /// Opens the Dropbox OAuth page — in a popup on web, or an external browser
+  /// on mobile.  On web, waits until the popup relays the auth code back.
   Future<void> signIn() async {
     final verifier = _generateCodeVerifier();
     final challenge = _generateCodeChallenge(verifier);
@@ -56,7 +66,17 @@ class DropboxService {
       'token_access_type': 'offline',
     });
 
-    await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (kIsWeb) {
+      final code = await web_auth.openAuthPopupAndWaitForCode(uri.toString());
+      if (code != null) {
+        final codeVerifier = await _loadCodeVerifier();
+        if (codeVerifier != null) {
+          await _exchangeCode(code, codeVerifier);
+        }
+      }
+    } else {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
   }
 
   /// Called on mobile when the app receives the redirect with the auth code.
