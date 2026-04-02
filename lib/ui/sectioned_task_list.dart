@@ -91,13 +91,18 @@ class _SectionedTaskListState extends State<SectionedTaskList> {
       );
     }
 
-    return CustomScrollView(
-      slivers: [
-        if (widget.inputHint != null)
-          SliverToBoxAdapter(child: _buildInputField(context)),
-        for (var i = 0; i < widget.sections.length; i++)
-          ..._buildSectionSlivers(i),
-        const SliverPadding(padding: EdgeInsets.only(bottom: 16)),
+    return Column(
+      children: [
+        if (widget.inputHint != null) _buildInputField(context),
+        Expanded(
+          child: CustomScrollView(
+            slivers: [
+              for (var i = 0; i < widget.sections.length; i++)
+                ..._buildSectionSlivers(i),
+              const SliverPadding(padding: EdgeInsets.only(bottom: 16)),
+            ],
+          ),
+        ),
       ],
     );
   }
@@ -331,7 +336,7 @@ class _TaskTileState extends State<TaskTile> {
         : task.isCompleted;
 
     return Material(
-      color: Theme.of(context).colorScheme.surface,
+      color: Colors.transparent,
       child: Dismissible(
       key: ValueKey(task.id),
       direction: DismissDirection.endToStart,

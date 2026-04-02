@@ -137,6 +137,8 @@ class _HomePageState extends State<HomePage> {
     String title = _getAppBarTitle(state);
     return AppBar(
       title: Text(title),
+      scrolledUnderElevation: 0,
+      backgroundColor: Theme.of(context).colorScheme.surface,
       actions: [
         if (state.syncing)
           const Padding(
