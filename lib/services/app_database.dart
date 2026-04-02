@@ -205,7 +205,11 @@ class UiStateEntries extends Table {
   ],
 )
 class AppDatabase extends _$AppDatabase {
-  AppDatabase() : super(_openConnection());
+  static AppDatabase? _instance;
+
+  factory AppDatabase() => _instance ??= AppDatabase._internal();
+
+  AppDatabase._internal() : super(_openConnection());
 
   static QueryExecutor _openConnection() {
     return driftDatabase(
