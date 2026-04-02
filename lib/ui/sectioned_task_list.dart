@@ -130,9 +130,12 @@ class _SectionedTaskListState extends State<SectionedTaskList> {
                     ],
                   ),
                 )
-              : ListView(
+              : SingleChildScrollView(
                   padding: const EdgeInsets.only(bottom: 16),
-                  children: _buildSectionWidgets(),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: _buildSectionWidgets(),
+                  ),
                 ),
         ),
       ],
@@ -161,6 +164,7 @@ class _SectionedTaskListState extends State<SectionedTaskList> {
         final sectionIndex = i;
         widgets.add(
           ReorderableListView(
+            key: ValueKey('section_$sectionIndex'),
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
             buildDefaultDragHandles: false,
@@ -170,7 +174,7 @@ class _SectionedTaskListState extends State<SectionedTaskList> {
             children: [
               for (var j = 0; j < section.tasks.length; j++)
                 TaskTile(
-                  key: ValueKey(section.tasks[j].id),
+                  key: ValueKey('${i}_${section.tasks[j].id}'),
                   task: section.tasks[j],
                   index: j,
                   reorderable: true,
@@ -181,11 +185,11 @@ class _SectionedTaskListState extends State<SectionedTaskList> {
           ),
         );
       } else {
-        for (final task in section.tasks) {
+        for (var j = 0; j < section.tasks.length; j++) {
           widgets.add(
             TaskTile(
-              key: ValueKey(task.id),
-              task: task,
+              key: ValueKey('${i}_${section.tasks[j].id}'),
+              task: section.tasks[j],
               index: 0,
               reorderable: false,
               showListName: widget.showListName,
