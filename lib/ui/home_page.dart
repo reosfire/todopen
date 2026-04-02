@@ -329,200 +329,155 @@ class _HomePageState extends State<HomePage> {
   }
 
   List<Widget> _buildFolderAndListItems(AppState state) {
-    // Lists not in any folder, sorted by order
-    final orphanLists = state.lists.where((l) => l.folderId == null).toList()
-      ..sort((a, b) => a.order.compareTo(b.order));
+    // Interleave orphan lists and folders sorted by their order field.
+    final orphanLists = state.lists.where((l) => l.folderId == null).toList();
+    final folders = state.folders.toList();
+    final combined = <dynamic>[...orphanLists, ...folders]
+      ..sort((a, b) {
+        final aOrder = a is TaskList ? a.order : (a as Folder).order;
+        final bOrder = b is TaskList ? b.order : (b as Folder).order;
+        return aOrder.compareTo(bOrder);
+      });
 
-    // Folders sorted by order
-    final sortedFolders = state.folders.toList()
-      ..sort((a, b) => a.order.compareTo(b.order));
-
-    // Build orphan list widgets with keys for reordering
-    final orphanWidgets = orphanLists
-        .map(
-          (list) => _buildListTile(
-            state,
-            list,
-            key: ValueKey('list_${list.id}'),
-          ),
-        )
-        .toList();
-
-    // Build folder widgets with keys
-    final folderWidgets = sortedFolders.map((folder) {
+    Widget buildFolderWidget(Folder folder) {
       final folderLists =
           state.lists.where((l) => l.folderId == folder.id).toList()
             ..sort((a, b) => a.order.compareTo(b.order));
-
       final folderListCount = state.tasks
           .where(
             (t) => folderLists.any((l) => l.id == t.listId) && !t.isCompleted,
           )
           .length;
-
       return _HoverTrailingTile(
         key: ValueKey('folder_${folder.id}'),
         child: (isHovered) => _SwipeToEdit(
           onEdit: () => _showFolderMenu(context, state, folder),
           child: ExpansionTile(
-          initiallyExpanded: _expandedFolderIds.contains(folder.id),
-          onExpansionChanged: (expanded) {
-            setState(() {
-              if (expanded) {
-                _expandedFolderIds.add(folder.id);
-              } else {
-                _expandedFolderIds.remove(folder.id);
-              }
-            });
-            _saveExpandedFolders();
-          },
-          leading: const Icon(Icons.folder_outlined, size: 20),
-          title: Text(folder.name),
-          dense: true,
-          shape: const Border(),
-          collapsedShape: const Border(),
-          trailing: SizedBox(
-            width: 32,
-            height: 32,
-            child: isHovered
-                ? IconButton(
-                    icon: const Icon(Icons.more_horiz, size: 18),
-                    onPressed: () => _showFolderMenu(context, state, folder),
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints.tightFor(
-                      width: 32,
-                      height: 32,
-                    ),
-                    visualDensity: VisualDensity.compact,
-                  )
-                : folderListCount > 0
-                ? Text(
-                    '$folderListCount',
-                    style: Theme.of(context).textTheme.bodySmall,
-                    textAlign: TextAlign.center,
-                  )
-                : const SizedBox.shrink(),
-          ),
-          children: [
-            ReorderableListView(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              buildDefaultDragHandles: false,
-              onReorder: (oldIndex, newIndex) {
-                _reorderListsInFolder(
-                  state,
-                  folder.id,
-                  folderLists,
-                  oldIndex,
-                  newIndex,
-                );
-              },
-              children: folderLists.asMap().entries.map((e) {
-                final key = ValueKey('list_${e.value.id}_in_folder');
-                final tile = _SwipeToEdit(
-                  onEdit: () => _showListMenu(context, state, e.value),
-                  child: Padding(
-                    padding: const EdgeInsets.only(left: 16),
-                    child: _buildListTile(state, e.value, enableSwipe: false),
-                  ),
-                );
-                return _isMobile
-                    ? ReorderableDelayedDragStartListener(
-                        key: key,
-                        index: e.key,
-                        child: tile,
-                      )
-                    : ReorderableDragStartListener(
-                        key: key,
-                        index: e.key,
-                        child: tile,
-                      );
-              }).toList(),
+            initiallyExpanded: _expandedFolderIds.contains(folder.id),
+            onExpansionChanged: (expanded) {
+              setState(() {
+                if (expanded) {
+                  _expandedFolderIds.add(folder.id);
+                } else {
+                  _expandedFolderIds.remove(folder.id);
+                }
+              });
+              _saveExpandedFolders();
+            },
+            leading: const Icon(Icons.folder_outlined, size: 20),
+            title: Text(folder.name),
+            dense: true,
+            shape: const Border(),
+            collapsedShape: const Border(),
+            trailing: SizedBox(
+              width: 32,
+              height: 32,
+              child: isHovered
+                  ? IconButton(
+                      icon: const Icon(Icons.more_horiz, size: 18),
+                      onPressed: () => _showFolderMenu(context, state, folder),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints.tightFor(
+                        width: 32,
+                        height: 32,
+                      ),
+                      visualDensity: VisualDensity.compact,
+                    )
+                  : folderListCount > 0
+                  ? Text(
+                      '$folderListCount',
+                      style: Theme.of(context).textTheme.bodySmall,
+                      textAlign: TextAlign.center,
+                    )
+                  : const SizedBox.shrink(),
             ),
-          ],
-        ),
+            children: [
+              ReorderableListView(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                buildDefaultDragHandles: false,
+                onReorder: (oldIndex, newIndex) {
+                  _reorderListsInFolder(
+                    state,
+                    folder.id,
+                    folderLists,
+                    oldIndex,
+                    newIndex,
+                  );
+                },
+                children: folderLists.asMap().entries.map((e) {
+                  final key = ValueKey('list_${e.value.id}_in_folder');
+                  final tile = _SwipeToEdit(
+                    onEdit: () => _showListMenu(context, state, e.value),
+                    child: Padding(
+                      padding: const EdgeInsets.only(left: 16),
+                      child: _buildListTile(state, e.value, enableSwipe: false),
+                    ),
+                  );
+                  return _isMobile
+                      ? ReorderableDelayedDragStartListener(
+                          key: key,
+                          index: e.key,
+                          child: tile,
+                        )
+                      : ReorderableDragStartListener(
+                          key: key,
+                          index: e.key,
+                          child: tile,
+                        );
+                }).toList(),
+              ),
+            ],
+          ),
         ),
       );
+    }
+
+    // Build combined widgets in interleaved order.
+    final combinedWidgets = combined.map((item) {
+      if (item is TaskList) {
+        return _buildListTile(state, item, key: ValueKey('list_${item.id}'));
+      } else {
+        return buildFolderWidget(item as Folder);
+      }
     }).toList();
 
-    // Combine into ReorderableListView
     return [
       ReorderableListView(
         key: const ValueKey('reorderable_folders_lists'),
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
         buildDefaultDragHandles: false,
-        onReorder: (oldIndex, newIndex) {
-          _reorderFoldersAndLists(
-            state,
-            orphanLists,
-            sortedFolders,
-            oldIndex,
-            newIndex,
-          );
-        },
-        children: [
-          ...orphanWidgets.asMap().entries.map(
-            (e) => _isMobile
-                ? ReorderableDelayedDragStartListener(
-                    key: e.value.key!,
-                    index: e.key,
-                    child: e.value,
-                  )
-                : ReorderableDragStartListener(
-                    key: e.value.key!,
-                    index: e.key,
-                    child: e.value,
-                  ),
-          ),
-          ...folderWidgets.asMap().entries.map(
-            (e) => _isMobile
-                ? ReorderableDelayedDragStartListener(
-                    key: e.value.key!,
-                    index: orphanWidgets.length + e.key,
-                    child: e.value,
-                  )
-                : ReorderableDragStartListener(
-                    key: e.value.key!,
-                    index: orphanWidgets.length + e.key,
-                    child: e.value,
-                  ),
-          ),
-        ],
+        onReorder: (oldIndex, newIndex) =>
+            _reorderFoldersAndLists(state, combined, oldIndex, newIndex),
+        children: combinedWidgets.asMap().entries.map(
+          (e) => _isMobile
+              ? ReorderableDelayedDragStartListener(
+                  key: e.value.key!,
+                  index: e.key,
+                  child: e.value,
+                )
+              : ReorderableDragStartListener(
+                  key: e.value.key!,
+                  index: e.key,
+                  child: e.value,
+                ),
+        ).toList(),
       ),
     ];
   }
 
   void _reorderFoldersAndLists(
     AppState state,
-    List<TaskList> orphanLists,
-    List<Folder> folders,
+    List<dynamic> combined,
     int oldIndex,
     int newIndex,
   ) {
-    // Create combined list of items
-    final items = <dynamic>[...orphanLists, ...folders];
-
-    // Perform reorder
+    final items = List<dynamic>.from(combined);
     if (oldIndex < newIndex) newIndex--;
     final item = items.removeAt(oldIndex);
     items.insert(newIndex, item);
-
-    // Split back into lists and folders
-    final reorderedOrphanLists = <TaskList>[];
-    final reorderedFolders = <Folder>[];
-
-    for (final item in items) {
-      if (item is TaskList) {
-        reorderedOrphanLists.add(item);
-      } else if (item is Folder) {
-        reorderedFolders.add(item);
-      }
-    }
-
-    // Update state
-    state.reorderLists(reorderedOrphanLists);
-    state.reorderFolders(reorderedFolders);
+    state.reorderMixed(items);
   }
 
   void _reorderListsInFolder(

@@ -626,6 +626,31 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
+  /// Reorders a mixed list of [TaskList] and [Folder] items, assigning each
+  /// item's order from its combined position so they share a number space.
+  Future<void> reorderMixed(List<dynamic> items) async {
+    for (var i = 0; i < items.length; i++) {
+      final it = items[i];
+      if (it is TaskList) {
+        it.order = i;
+        final idx = _data.lists.indexWhere((l) => l.id == it.id);
+        if (idx >= 0) _data.lists[idx] = it;
+      } else if (it is Folder) {
+        it.order = i;
+        final idx = _data.folders.indexWhere((f) => f.id == it.id);
+        if (idx >= 0) _data.folders[idx] = it;
+      }
+    }
+    await _save();
+    for (final it in items) {
+      if (it is TaskList) {
+        _syncService.pushEntity('lists', it.id.toString(), ProtoSerializer.listToBytes(it));
+      } else if (it is Folder) {
+        _syncService.pushEntity('folders', it.id.toString(), ProtoSerializer.folderToBytes(it));
+      }
+    }
+  }
+
   // ───── Tags ─────
 
   Tag? tagById(Uuid128 id) {
