@@ -340,8 +340,11 @@ class _HomePageState extends State<HomePage> {
     // Build orphan list widgets with keys for reordering
     final orphanWidgets = orphanLists
         .map(
-          (list) =>
-              _buildListTile(state, list, key: ValueKey('list_${list.id}')),
+          (list) => _buildListTile(
+            state,
+            list,
+            key: ValueKey('list_${list.id}'),
+          ),
         )
         .toList();
 
@@ -359,7 +362,9 @@ class _HomePageState extends State<HomePage> {
 
       return _HoverTrailingTile(
         key: ValueKey('folder_${folder.id}'),
-        child: (isHovered) => ExpansionTile(
+        child: (isHovered) => _SwipeToEdit(
+          onEdit: () => _showFolderMenu(context, state, folder),
+          child: ExpansionTile(
           initiallyExpanded: _expandedFolderIds.contains(folder.id),
           onExpansionChanged: (expanded) {
             setState(() {
@@ -413,25 +418,29 @@ class _HomePageState extends State<HomePage> {
                 );
               },
               children: folderLists.asMap().entries.map((e) {
-                final child = Padding(
-                  padding: const EdgeInsets.only(left: 16),
-                  child: _buildListTile(state, e.value),
-                );
                 final key = ValueKey('list_${e.value.id}_in_folder');
+                final tile = _SwipeToEdit(
+                  onEdit: () => _showListMenu(context, state, e.value),
+                  child: Padding(
+                    padding: const EdgeInsets.only(left: 16),
+                    child: _buildListTile(state, e.value, enableSwipe: false),
+                  ),
+                );
                 return _isMobile
                     ? ReorderableDelayedDragStartListener(
                         key: key,
                         index: e.key,
-                        child: child,
+                        child: tile,
                       )
                     : ReorderableDragStartListener(
                         key: key,
                         index: e.key,
-                        child: child,
+                        child: tile,
                       );
               }).toList(),
             ),
           ],
+        ),
         ),
       );
     }).toList();
@@ -532,42 +541,48 @@ class _HomePageState extends State<HomePage> {
     state.reorderLists(folderLists);
   }
 
-  Widget _buildListTile(AppState state, TaskList list, {Key? key}) {
+  Widget _buildListTile(AppState state, TaskList list, {Key? key, bool enableSwipe = true}) {
     final count = state.tasks
         .where((t) => t.listId == list.id && !t.isCompleted)
         .length;
     return _HoverTrailingTile(
       key: key,
-      child: (isHovered) => ListTile(
-        leading: Icon(Icons.list, color: list.color, size: 20),
-        title: Text(list.name),
-        trailing: SizedBox(
-          width: 32,
-          height: 32,
-          child: isHovered
-              ? IconButton(
-                  icon: const Icon(Icons.more_horiz, size: 18),
-                  onPressed: () => _showListMenu(context, state, list),
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints.tightFor(
-                    width: 32,
-                    height: 32,
-                  ),
-                  visualDensity: VisualDensity.compact,
-                )
-              : count > 0
-              ? Text(
-                  '$count',
-                  style: Theme.of(context).textTheme.bodySmall,
-                  textAlign: TextAlign.center,
-                )
-              : const SizedBox.shrink(),
-        ),
-        selected: _selectedListId == list.id,
-        dense: true,
-        onTap: () => _selectList(list.id),
-        onLongPress: () => _showListMenu(context, state, list),
-      ),
+      child: (isHovered) {
+        final tile = ListTile(
+          leading: Icon(Icons.list, color: list.color, size: 20),
+          title: Text(list.name),
+          trailing: SizedBox(
+            width: 32,
+            height: 32,
+            child: isHovered
+                ? IconButton(
+                    icon: const Icon(Icons.more_horiz, size: 18),
+                    onPressed: () => _showListMenu(context, state, list),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints.tightFor(
+                      width: 32,
+                      height: 32,
+                    ),
+                    visualDensity: VisualDensity.compact,
+                  )
+                : count > 0
+                ? Text(
+                    '$count',
+                    style: Theme.of(context).textTheme.bodySmall,
+                    textAlign: TextAlign.center,
+                  )
+                : const SizedBox.shrink(),
+          ),
+          selected: _selectedListId == list.id,
+          dense: true,
+          onTap: () => _selectList(list.id),
+        );
+        if (!enableSwipe) return tile;
+        return _SwipeToEdit(
+          onEdit: () => _showListMenu(context, state, list),
+          child: tile,
+        );
+      },
     );
   }
 
@@ -741,6 +756,120 @@ class _HoverTrailingTileState extends State<_HoverTrailingTile> {
       onEnter: (_) => setState(() => _isHovered = true),
       onExit: (_) => setState(() => _isHovered = false),
       child: widget.child(_isHovered),
+    );
+  }
+}
+
+class _SwipeToEdit extends StatefulWidget {
+  final Widget child;
+  final VoidCallback onEdit;
+
+  const _SwipeToEdit({required this.child, required this.onEdit});
+
+  @override
+  State<_SwipeToEdit> createState() => _SwipeToEditState();
+}
+
+class _SwipeToEditState extends State<_SwipeToEdit>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<Offset> _animation;
+  double _dragOffset = 0;
+  bool _animating = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 300),
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _onDragUpdate(DragUpdateDetails details) {
+    if (_animating) return;
+    final newOffset = (_dragOffset + details.delta.dx).clamp(0.0, double.infinity);
+    setState(() => _dragOffset = newOffset);
+  }
+
+  void _onDragEnd(DragEndDetails details, double maxWidth) {
+    if (_animating) return;
+    final triggered = _dragOffset > maxWidth * 0.5;
+    _snapBack(andThen: triggered ? widget.onEdit : null);
+  }
+
+  void _snapBack({VoidCallback? andThen}) {
+    _animating = true;
+    final start = _dragOffset;
+    _animation = Tween<Offset>(
+      begin: Offset(start, 0),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOut));
+    _controller.forward(from: 0).then((_) {
+      if (mounted) {
+        setState(() {
+          _dragOffset = 0;
+          _animating = false;
+        });
+      }
+      andThen?.call();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final maxWidth = constraints.maxWidth;
+        final offset = _animating ? _animation.value.dx : _dragOffset;
+        final progress = (offset / maxWidth).clamp(0.0, 1.0);
+
+        return GestureDetector(
+          onHorizontalDragUpdate: _onDragUpdate,
+          onHorizontalDragEnd: (d) => _onDragEnd(d, maxWidth),
+          child: Stack(
+            children: [
+              // Background
+              Positioned.fill(
+                child: Container(
+                  color: Color.lerp(
+                    Colors.transparent,
+                    Theme.of(context).colorScheme.primary,
+                    progress,
+                  ),
+                  alignment: Alignment.centerLeft,
+                  padding: const EdgeInsets.only(left: 20),
+                  child: Opacity(
+                    opacity: progress.clamp(0.0, 1.0),
+                    child: Icon(
+                      Icons.edit,
+                      color: Theme.of(context).colorScheme.onPrimary,
+                    ),
+                  ),
+                ),
+              ),
+              // Foreground sliding tile
+              AnimatedBuilder(
+                animation: _controller,
+                builder: (context, child) {
+                  final dx = _animating ? _animation.value.dx : _dragOffset;
+                  return Transform.translate(
+                    offset: Offset(dx, 0),
+                    child: child,
+                  );
+                },
+                child: widget.child,
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }
