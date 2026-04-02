@@ -64,142 +64,161 @@ class _SectionedTaskListState extends State<SectionedTaskList> {
   Widget build(BuildContext context) {
     final allEmpty = widget.sections.every((s) => s.tasks.isEmpty);
 
-    return Column(
-      children: [
-        // Input field
-        if (widget.inputHint != null)
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surface,
-              border: Border(
-                bottom: BorderSide(
-                  color: Theme.of(context).dividerColor,
-                  width: 1,
-                ),
+    if (allEmpty) {
+      return Column(
+        children: [
+          if (widget.inputHint != null) _buildInputField(context),
+          Expanded(
+            child: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.inbox_outlined,
+                    size: 64,
+                    color: Theme.of(context).colorScheme.outlineVariant,
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    'No tasks',
+                    style: Theme.of(context).textTheme.bodyLarge,
+                  ),
+                ],
               ),
             ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _inputController,
-                    focusNode: _inputFocus,
-                    decoration: InputDecoration(
-                      hintText: widget.inputHint,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 12,
-                      ),
-                    ),
-                    onSubmitted: (_) => _handleAddTask(),
-                    textInputAction: TextInputAction.done,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                SizedBox(
-                  height: 48,
-                  child: FilledButton(
-                    onPressed: _handleAddTask,
-                    child: const Text('Add'),
-                  ),
-                ),
-              ],
-            ),
           ),
-        // Task sections
-        Expanded(
-          child: allEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.inbox_outlined,
-                        size: 64,
-                        color: Theme.of(context).colorScheme.outlineVariant,
-                      ),
-                      const SizedBox(height: 12),
-                      Text(
-                        'No tasks',
-                        style: Theme.of(context).textTheme.bodyLarge,
-                      ),
-                    ],
-                  ),
-                )
-              : SingleChildScrollView(
-                  padding: const EdgeInsets.only(bottom: 16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: _buildSectionWidgets(),
-                  ),
-                ),
-        ),
+        ],
+      );
+    }
+
+    return CustomScrollView(
+      slivers: [
+        if (widget.inputHint != null)
+          SliverToBoxAdapter(child: _buildInputField(context)),
+        for (var i = 0; i < widget.sections.length; i++)
+          ..._buildSectionSlivers(i),
+        const SliverPadding(padding: EdgeInsets.only(bottom: 16)),
       ],
     );
   }
 
-  List<Widget> _buildSectionWidgets() {
-    final widgets = <Widget>[];
-    for (var i = 0; i < widget.sections.length; i++) {
-      final section = widget.sections[i];
-      if (section.tasks.isEmpty) continue;
+  Widget _buildInputField(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        border: Border(
+          bottom: BorderSide(color: Theme.of(context).dividerColor),
+        ),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: TextField(
+              controller: _inputController,
+              focusNode: _inputFocus,
+              decoration: InputDecoration(
+                hintText: widget.inputHint,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+              ),
+              onSubmitted: (_) => _handleAddTask(),
+              textInputAction: TextInputAction.done,
+            ),
+          ),
+          const SizedBox(width: 8),
+          SizedBox(
+            height: 48,
+            child: FilledButton(
+              onPressed: _handleAddTask,
+              child: const Text('Add'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
-      if (section.header != null) {
-        widgets.add(
-          Padding(
+  List<Widget> _buildSectionSlivers(int sectionIndex) {
+    final section = widget.sections[sectionIndex];
+    if (section.tasks.isEmpty) return [];
+
+    final slivers = <Widget>[];
+
+    if (section.header != null) {
+      slivers.add(
+        SliverToBoxAdapter(
+          child: Padding(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
             child: Text(
               section.header!,
               style: const TextStyle(fontWeight: FontWeight.w600),
             ),
           ),
-        );
-      }
+        ),
+      );
+    }
 
-      if (widget.onReorder != null) {
-        final sectionIndex = i;
-        widgets.add(
-          ReorderableListView(
-            key: ValueKey('section_$sectionIndex'),
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            buildDefaultDragHandles: false,
-            onReorder: (oldIndex, newIndex) {
-              widget.onReorder!.call(sectionIndex, oldIndex, newIndex);
-            },
-            children: [
-              for (var j = 0; j < section.tasks.length; j++)
-                TaskTile(
-                  key: ValueKey('${i}_${section.tasks[j].id}'),
-                  task: section.tasks[j],
-                  index: j,
-                  reorderable: true,
-                  showListName: widget.showListName,
-                  toggleDate: widget.toggleDate,
-                ),
-            ],
-          ),
-        );
-      } else {
-        for (var j = 0; j < section.tasks.length; j++) {
-          widgets.add(
-            TaskTile(
-              key: ValueKey('${i}_${section.tasks[j].id}'),
-              task: section.tasks[j],
-              index: 0,
-              reorderable: false,
+    if (widget.onReorder != null) {
+      slivers.add(
+        SliverReorderableList(
+          itemCount: section.tasks.length,
+          findChildIndexCallback: (key) {
+            if (key is! ValueKey<String>) return null;
+            final idx = section.tasks.indexWhere(
+              (t) => '${sectionIndex}_${t.id}' == key.value,
+            );
+            return idx == -1 ? null : idx;
+          },
+          onReorder: (oldIndex, newIndex) =>
+              widget.onReorder!.call(sectionIndex, oldIndex, newIndex),
+          itemBuilder: (context, index) {
+            final task = section.tasks[index];
+            return TaskTile(
+              key: ValueKey('${sectionIndex}_${task.id}'),
+              task: task,
+              index: index,
+              reorderable: true,
               showListName: widget.showListName,
               toggleDate: widget.toggleDate,
-            ),
-          );
-        }
-      }
+            );
+          },
+        ),
+      );
+    } else {
+      slivers.add(
+        SliverList(
+          delegate: SliverChildBuilderDelegate(
+            (context, index) {
+              final task = section.tasks[index];
+              return TaskTile(
+                key: ValueKey('${sectionIndex}_${task.id}'),
+                task: task,
+                index: index,
+                reorderable: false,
+                showListName: widget.showListName,
+                toggleDate: widget.toggleDate,
+              );
+            },
+            childCount: section.tasks.length,
+            findChildIndexCallback: (key) {
+              if (key is! ValueKey<String>) return null;
+              final idx = section.tasks.indexWhere(
+                (t) => '${sectionIndex}_${t.id}' == key.value,
+              );
+              return idx == -1 ? null : idx;
+            },
+          ),
+        ),
+      );
     }
-    return widgets;
+
+    return slivers;
   }
 }
 
@@ -311,7 +330,9 @@ class _TaskTileState extends State<TaskTile> {
         ? task.isCompletedOn(widget.toggleDate!)
         : task.isCompleted;
 
-    return Dismissible(
+    return Material(
+      color: Theme.of(context).colorScheme.surface,
+      child: Dismissible(
       key: ValueKey(task.id),
       direction: DismissDirection.endToStart,
       background: Container(
@@ -420,7 +441,8 @@ class _TaskTileState extends State<TaskTile> {
                   ),
                   onPressed: () {
                     final RenderBox button =
-                        _moreButtonKey.currentContext!.findRenderObject() as RenderBox;
+                        _moreButtonKey.currentContext!.findRenderObject()
+                            as RenderBox;
                     final Offset buttonPosition = button.localToGlobal(
                       Offset.zero,
                     );
@@ -439,6 +461,7 @@ class _TaskTileState extends State<TaskTile> {
           ),
         ),
       ),
+    ),
     );
   }
 
