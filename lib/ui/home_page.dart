@@ -409,10 +409,7 @@ class _HomePageState extends State<HomePage> {
                   final key = ValueKey('list_${e.value.id}_in_folder');
                   final tile = _SwipeToEdit(
                     onEdit: () => _showListMenu(context, state, e.value),
-                    child: Padding(
-                      padding: const EdgeInsets.only(left: 16),
-                      child: _buildListTile(state, e.value, enableSwipe: false),
-                    ),
+                    child: _buildListTile(state, e.value, enableSwipe: false, leadingIndent: 16),
                   );
                   return _isMobile
                       ? ReorderableDelayedDragStartListener(
@@ -496,7 +493,7 @@ class _HomePageState extends State<HomePage> {
     state.reorderLists(folderLists);
   }
 
-  Widget _buildListTile(AppState state, TaskList list, {Key? key, bool enableSwipe = true}) {
+  Widget _buildListTile(AppState state, TaskList list, {Key? key, bool enableSwipe = true, double leadingIndent = 0}) {
     final count = state.tasks
         .where((t) => t.listId == list.id && !t.isCompleted)
         .length;
@@ -504,6 +501,7 @@ class _HomePageState extends State<HomePage> {
       key: key,
       child: (isHovered) {
         final tile = ListTile(
+          contentPadding: EdgeInsets.only(left: 16 + leadingIndent, right: 16),
           leading: Icon(Icons.list, color: list.color, size: 20),
           title: Text(list.name),
           trailing: SizedBox(
