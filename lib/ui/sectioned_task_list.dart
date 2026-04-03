@@ -133,6 +133,7 @@ class _SectionedTaskListState extends State<SectionedTaskList> {
                 ),
               ),
               onSubmitted: (_) => _handleAddTask(),
+              onTapOutside: (_) => _inputFocus.unfocus(),
               textInputAction: TextInputAction.done,
             ),
           ),
