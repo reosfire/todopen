@@ -597,7 +597,8 @@ class _HomePageState extends State<HomePage> {
       final freshTask = state.taskById(selectedTask.id);
       return LayoutBuilder(
         builder: (context, constraints) {
-          return Row(
+          return ClipRect(
+            child: Row(
             children: [
               Expanded(child: listView),
               GestureDetector(
@@ -672,6 +673,7 @@ class _HomePageState extends State<HomePage> {
                     : const SizedBox.shrink(),
               ),
             ],
+            ),
           );
         },
       );

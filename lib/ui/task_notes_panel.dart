@@ -249,7 +249,8 @@ class _TaskNotesPanelState extends State<TaskNotesPanel> {
         final maxWidth = constraints.maxWidth - 80.0;
         final leftWidth = _leftPaneWidth.clamp(minWidth, maxWidth);
 
-        return Row(
+        return ClipRect(
+          child: Row(
           children: [
             SizedBox(width: leftWidth, child: _buildEditor(state)),
             GestureDetector(
@@ -309,6 +310,7 @@ class _TaskNotesPanelState extends State<TaskNotesPanel> {
             ),
             Expanded(child: _buildPreview()),
           ],
+          ),
         );
       },
     );
