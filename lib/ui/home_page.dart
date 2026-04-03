@@ -6,8 +6,10 @@ import '../models/task_list.dart';
 import '../models/folder.dart';
 import '../services/storage_service.dart';
 import '../utils/uuid128.dart';
+import '../models/task.dart';
 import 'task_list_view.dart';
 import 'smart_list_view.dart';
+import 'task_notes_panel.dart';
 import 'list_editor_dialog.dart';
 import 'folder_editor_dialog.dart';
 import '../models/smart_list.dart';
@@ -25,6 +27,11 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   Uuid128? _selectedListId;
   Uuid128? _selectedSmartListId;
+  Task? _selectedTask;
+  double _notesPanelWidth = 360;
+  double _overflow = 0.0;
+  bool _isLockedLeft = false;
+  bool _isLockedRight = false;
   Set<Uuid128> _expandedFolderIds = {};
   final _storageService = StorageService();
 
@@ -67,6 +74,7 @@ class _HomePageState extends State<HomePage> {
     setState(() {
       _selectedListId = id;
       _selectedSmartListId = null;
+      _selectedTask = null;
     });
     _storageService.saveSelectedListId(id);
     _storageService.saveSelectedSmartListId(null);
@@ -77,6 +85,7 @@ class _HomePageState extends State<HomePage> {
     setState(() {
       _selectedSmartListId = id;
       _selectedListId = null;
+      _selectedTask = null;
     });
     _storageService.saveSelectedSmartListId(id);
     _storageService.saveSelectedListId(null);
@@ -409,7 +418,12 @@ class _HomePageState extends State<HomePage> {
                   final key = ValueKey('list_${e.value.id}_in_folder');
                   final tile = _SwipeToEdit(
                     onEdit: () => _showListMenu(context, state, e.value),
-                    child: _buildListTile(state, e.value, enableSwipe: false, leadingIndent: 16),
+                    child: _buildListTile(
+                      state,
+                      e.value,
+                      enableSwipe: false,
+                      leadingIndent: 16,
+                    ),
                   );
                   return _isMobile
                       ? ReorderableDelayedDragStartListener(
@@ -447,19 +461,23 @@ class _HomePageState extends State<HomePage> {
         buildDefaultDragHandles: false,
         onReorder: (oldIndex, newIndex) =>
             _reorderFoldersAndLists(state, combined, oldIndex, newIndex),
-        children: combinedWidgets.asMap().entries.map(
-          (e) => _isMobile
-              ? ReorderableDelayedDragStartListener(
-                  key: e.value.key!,
-                  index: e.key,
-                  child: e.value,
-                )
-              : ReorderableDragStartListener(
-                  key: e.value.key!,
-                  index: e.key,
-                  child: e.value,
-                ),
-        ).toList(),
+        children: combinedWidgets
+            .asMap()
+            .entries
+            .map(
+              (e) => _isMobile
+                  ? ReorderableDelayedDragStartListener(
+                      key: e.value.key!,
+                      index: e.key,
+                      child: e.value,
+                    )
+                  : ReorderableDragStartListener(
+                      key: e.value.key!,
+                      index: e.key,
+                      child: e.value,
+                    ),
+            )
+            .toList(),
       ),
     ];
   }
@@ -493,7 +511,13 @@ class _HomePageState extends State<HomePage> {
     state.reorderLists(folderLists);
   }
 
-  Widget _buildListTile(AppState state, TaskList list, {Key? key, bool enableSwipe = true, double leadingIndent = 0}) {
+  Widget _buildListTile(
+    AppState state,
+    TaskList list, {
+    Key? key,
+    bool enableSwipe = true,
+    double leadingIndent = 0,
+  }) {
     final count = state.tasks
         .where((t) => t.listId == list.id && !t.isCompleted)
         .length;
@@ -540,14 +564,138 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _buildBody(AppState state) {
+    Widget listView;
     if (_selectedSmartListId != null) {
       final sl = state.smartListById(_selectedSmartListId!);
-      if (sl != null) return SmartListView(smartList: sl);
+      if (sl != null) {
+        listView = SmartListView(
+          smartList: sl,
+          selectedTaskId: _selectedTask?.id.toString(),
+          onTaskSelected: (t) {
+            setState(() => _selectedTask = t);
+            if (_isNarrow) _showNotesPanelSheet(state, t);
+          },
+        );
+      } else {
+        listView = const Center(child: Text('Select a list'));
+      }
+    } else if (_selectedListId != null) {
+      listView = TaskListView(
+        listId: _selectedListId!,
+        selectedTaskId: _selectedTask?.id.toString(),
+        onTaskSelected: (t) {
+          setState(() => _selectedTask = t);
+          if (_isNarrow) _showNotesPanelSheet(state, t);
+        },
+      );
+    } else {
+      listView = const Center(child: Text('Select a list'));
     }
-    if (_selectedListId != null) {
-      return TaskListView(listId: _selectedListId!);
+
+    final selectedTask = _selectedTask;
+    if (!_isNarrow && selectedTask != null) {
+      final freshTask = state.taskById(selectedTask.id);
+      return LayoutBuilder(
+        builder: (context, constraints) {
+          return Row(
+            children: [
+              Expanded(child: listView),
+              GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                onHorizontalDragUpdate: (details) {
+                  setState(() {
+                    final minWidth = 300.0;
+                    final maxWidth = constraints.maxWidth - 300.0;
+
+                    double delta = -details.delta.dx;
+
+                    // If locked, accumulate overflow instead of resizing
+                    if (_isLockedLeft) {
+                      _overflow += delta;
+
+                      // Unlock only when cursor comes back
+                      if (_overflow > 0) {
+                        _isLockedLeft = false;
+                        delta = _overflow;
+                        _overflow = 0;
+                      } else {
+                        return; // Still outside → do nothing
+                      }
+                    }
+
+                    if (_isLockedRight) {
+                      _overflow += delta;
+
+                      if (_overflow < 0) {
+                        _isLockedRight = false;
+                        delta = _overflow;
+                        _overflow = 0;
+                      } else {
+                        return;
+                      }
+                    }
+
+                    final newWidth = _notesPanelWidth + delta;
+
+                    if (newWidth <= minWidth) {
+                      _notesPanelWidth = minWidth;
+                      _isLockedLeft = true;
+                      _overflow = newWidth - minWidth; // negative overflow
+                    } else if (newWidth >= maxWidth) {
+                      _notesPanelWidth = maxWidth;
+                      _isLockedRight = true;
+                      _overflow = newWidth - maxWidth; // positive overflow
+                    } else {
+                      _notesPanelWidth = newWidth;
+                    }
+                  });
+                },
+                child: MouseRegion(
+                  cursor: SystemMouseCursors.resizeColumn,
+                  child: SizedBox(
+                    width: 8,
+                    child: VerticalDivider(
+                      width: 2,
+                      thickness: 2,
+                      color: Theme.of(context).dividerColor,
+                    ),
+                  ),
+                ),
+              ),
+              SizedBox(
+                width: _notesPanelWidth,
+                child: freshTask != null
+                    ? TaskNotesPanel(
+                        key: ValueKey(freshTask.id),
+                        task: freshTask,
+                      )
+                    : const SizedBox.shrink(),
+              ),
+            ],
+          );
+        },
+      );
     }
-    return const Center(child: Text('Select a list'));
+
+    return listView;
+  }
+
+  void _showNotesPanelSheet(AppState state, Task task) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (_) => DraggableScrollableSheet(
+        initialChildSize: 0.6,
+        minChildSize: 0.3,
+        maxChildSize: 0.95,
+        expand: false,
+        builder: (_, scrollController) => TaskNotesPanel(
+          key: ValueKey(task.id),
+          task: state.taskById(task.id) ?? task,
+        ),
+      ),
+    );
   }
 
   // ───── Dialogs ─────
@@ -747,7 +895,10 @@ class _SwipeToEditState extends State<_SwipeToEdit>
 
   void _onDragUpdate(DragUpdateDetails details) {
     if (_animating) return;
-    final newOffset = (_dragOffset + details.delta.dx).clamp(0.0, double.infinity);
+    final newOffset = (_dragOffset + details.delta.dx).clamp(
+      0.0,
+      double.infinity,
+    );
     setState(() => _dragOffset = newOffset);
   }
 
@@ -781,7 +932,6 @@ class _SwipeToEditState extends State<_SwipeToEdit>
       builder: (context, constraints) {
         final maxWidth = constraints.maxWidth;
 
-
         return GestureDetector(
           onHorizontalDragUpdate: _onDragUpdate,
           onHorizontalDragEnd: (d) => _onDragEnd(d, maxWidth),
@@ -812,10 +962,7 @@ class _SwipeToEditState extends State<_SwipeToEdit>
                     ),
                   ),
                   // Foreground sliding tile
-                  Transform.translate(
-                    offset: Offset(dx, 0),
-                    child: child,
-                  ),
+                  Transform.translate(offset: Offset(dx, 0), child: child),
                 ],
               );
             },

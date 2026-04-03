@@ -8,7 +8,9 @@ import 'sectioned_task_list.dart';
 
 class TaskListView extends StatelessWidget {
   final Uuid128 listId;
-  const TaskListView({super.key, required this.listId});
+  final String? selectedTaskId;
+  final void Function(Task task)? onTaskSelected;
+  const TaskListView({super.key, required this.listId, this.selectedTaskId, this.onTaskSelected});
 
   @override
   Widget build(BuildContext context) {
@@ -28,6 +30,8 @@ class TaskListView extends StatelessWidget {
         final section = sectionIndex == 0 ? pending : completed;
         _reorderTasksInSection(state, section, oldIndex, newIndex);
       },
+      selectedTaskId: selectedTaskId,
+      onTaskSelected: onTaskSelected,
     );
   }
 

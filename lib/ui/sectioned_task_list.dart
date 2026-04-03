@@ -27,6 +27,12 @@ class SectionedTaskList extends StatefulWidget {
   /// The date to use for recurring task completion toggle.
   final DateTime? toggleDate;
 
+  /// The currently selected task id (for highlighting).
+  final String? selectedTaskId;
+
+  /// Callback when a task is selected (tapped).
+  final void Function(Task task)? onTaskSelected;
+
   const SectionedTaskList({
     super.key,
     required this.sections,
@@ -35,6 +41,8 @@ class SectionedTaskList extends StatefulWidget {
     this.onAddTask,
     this.onReorder,
     this.toggleDate,
+    this.selectedTaskId,
+    this.onTaskSelected,
   });
 
   @override
@@ -192,6 +200,8 @@ class _SectionedTaskListState extends State<SectionedTaskList> {
               reorderable: true,
               showListName: widget.showListName,
               toggleDate: widget.toggleDate,
+              selected: widget.selectedTaskId == task.id.toString(),
+              onSelected: widget.onTaskSelected,
             );
           },
         ),
@@ -209,6 +219,8 @@ class _SectionedTaskListState extends State<SectionedTaskList> {
                 reorderable: false,
                 showListName: widget.showListName,
                 toggleDate: widget.toggleDate,
+                selected: widget.selectedTaskId == task.id.toString(),
+                onSelected: widget.onTaskSelected,
               );
             },
             childCount: section.tasks.length,
@@ -236,6 +248,8 @@ class TaskTile extends StatefulWidget {
   final bool reorderable;
   final bool showListName;
   final DateTime? toggleDate;
+  final bool selected;
+  final void Function(Task task)? onSelected;
 
   const TaskTile({
     required super.key,
@@ -244,6 +258,8 @@ class TaskTile extends StatefulWidget {
     this.reorderable = false,
     this.showListName = false,
     this.toggleDate,
+    this.selected = false,
+    this.onSelected,
   });
 
   @override
@@ -463,7 +479,11 @@ class _TaskTileState extends State<TaskTile> {
                 ),
               ],
             ),
-            onTap: _startEditing,
+            selected: widget.selected,
+            onTap: () {
+              widget.onSelected?.call(widget.task);
+              _startEditing();
+            },
           ),
         ),
       ),

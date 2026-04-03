@@ -23,6 +23,7 @@ dependencies:
   drift_flutter: ^0.3.0
   protobuf: ^6.0.0
   fixnum: ^1.1.1
+  flutter_markdown_plus: ^1.0.7
 
 dev_dependencies:
   flutter_test:

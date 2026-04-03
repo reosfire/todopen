@@ -7,7 +7,9 @@ import 'sectioned_task_list.dart';
 
 class SmartListView extends StatelessWidget {
   final SmartList smartList;
-  const SmartListView({super.key, required this.smartList});
+  final String? selectedTaskId;
+  final void Function(Task task)? onTaskSelected;
+  const SmartListView({super.key, required this.smartList, this.selectedTaskId, this.onTaskSelected});
 
   @override
   Widget build(BuildContext context) {
@@ -23,6 +25,8 @@ class SmartListView extends StatelessWidget {
           ? (title) => _addTask(state, title, filter)
           : null,
       toggleDate: _getToggleDate(filter),
+      selectedTaskId: selectedTaskId,
+      onTaskSelected: onTaskSelected,
     );
   }
 
