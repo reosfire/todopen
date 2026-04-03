@@ -501,7 +501,7 @@ class _HomePageState extends State<HomePage> {
       key: key,
       child: (isHovered) {
         final tile = ListTile(
-          contentPadding: EdgeInsets.only(left: 16 + leadingIndent, right: 16),
+          contentPadding: EdgeInsets.only(left: 16 + leadingIndent, right: 24),
           leading: Icon(Icons.list, color: list.color, size: 20),
           title: Text(list.name),
           trailing: SizedBox(
