@@ -782,46 +782,46 @@ class _SwipeToEditState extends State<_SwipeToEdit>
     return LayoutBuilder(
       builder: (context, constraints) {
         final maxWidth = constraints.maxWidth;
-        final offset = _animating ? _animation.value.dx : _dragOffset;
-        final progress = (offset / maxWidth).clamp(0.0, 1.0);
+
 
         return GestureDetector(
           onHorizontalDragUpdate: _onDragUpdate,
           onHorizontalDragEnd: (d) => _onDragEnd(d, maxWidth),
-          child: Stack(
-            children: [
-              // Background
-              Positioned.fill(
-                child: Container(
-                  color: Color.lerp(
-                    Colors.transparent,
-                    Theme.of(context).colorScheme.primary,
-                    progress,
-                  ),
-                  alignment: Alignment.centerLeft,
-                  padding: const EdgeInsets.only(left: 20),
-                  child: Opacity(
-                    opacity: progress.clamp(0.0, 1.0),
-                    child: Icon(
-                      Icons.edit,
-                      color: Theme.of(context).colorScheme.onPrimary,
+          child: AnimatedBuilder(
+            animation: _controller,
+            builder: (context, child) {
+              final dx = _animating ? _animation.value.dx : _dragOffset;
+              final prog = ((dx / maxWidth) / 0.5).clamp(0.0, 1.0);
+              return Stack(
+                children: [
+                  // Background — width and opacity track the drag offset
+                  Positioned(
+                    left: 0,
+                    top: 0,
+                    bottom: 0,
+                    width: dx,
+                    child: Container(
+                      color: Theme.of(context).colorScheme.primary,
+                      alignment: Alignment.centerLeft,
+                      padding: const EdgeInsets.only(left: 20),
+                      child: Opacity(
+                        opacity: prog,
+                        child: Icon(
+                          Icons.edit,
+                          color: Theme.of(context).colorScheme.onPrimary,
+                        ),
+                      ),
                     ),
                   ),
-                ),
-              ),
-              // Foreground sliding tile
-              AnimatedBuilder(
-                animation: _controller,
-                builder: (context, child) {
-                  final dx = _animating ? _animation.value.dx : _dragOffset;
-                  return Transform.translate(
+                  // Foreground sliding tile
+                  Transform.translate(
                     offset: Offset(dx, 0),
                     child: child,
-                  );
-                },
-                child: widget.child,
-              ),
-            ],
+                  ),
+                ],
+              );
+            },
+            child: widget.child,
           ),
         );
       },
