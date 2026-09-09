@@ -59,7 +59,7 @@ message ProtoTaskList {
   string name = 2;
   // color_value = 0 and has_color = false means no color
   bool has_color = 3;
-  int32 color_value = 4;
+  uint32 color_value = 4;
   // empty bytes means "not set"
   bytes folder_id = 5;
   int32 order = 6;
@@ -78,7 +78,7 @@ message ProtoFolder {
 message ProtoTag {
   bytes id = 1;
   string name = 2;
-  int32 color_value = 3;
+  uint32 color_value = 3;
 }
 
 // ───── SmartList filter types ─────
@@ -120,7 +120,7 @@ message ProtoSmartList {
   bytes id = 1;
   string name = 2;
   int32 icon_code_point = 3;
-  int32 color_value = 4;
+  uint32 color_value = 4;
   ProtoSmartListFilter filter = 5;
 }
 

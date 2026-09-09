@@ -193,7 +193,7 @@ const ProtoTaskList$json = {
     {'1': 'id', '3': 1, '4': 1, '5': 12, '10': 'id'},
     {'1': 'name', '3': 2, '4': 1, '5': 9, '10': 'name'},
     {'1': 'has_color', '3': 3, '4': 1, '5': 8, '10': 'hasColor'},
-    {'1': 'color_value', '3': 4, '4': 1, '5': 5, '10': 'colorValue'},
+    {'1': 'color_value', '3': 4, '4': 1, '5': 13, '10': 'colorValue'},
     {'1': 'folder_id', '3': 5, '4': 1, '5': 12, '10': 'folderId'},
     {'1': 'order', '3': 6, '4': 1, '5': 5, '10': 'order'},
   ],
@@ -202,7 +202,7 @@ const ProtoTaskList$json = {
 /// Descriptor for `ProtoTaskList`. Decode as a `google.protobuf.DescriptorProto`.
 final $typed_data.Uint8List protoTaskListDescriptor = $convert.base64Decode(
     'Cg1Qcm90b1Rhc2tMaXN0Eg4KAmlkGAEgASgMUgJpZBISCgRuYW1lGAIgASgJUgRuYW1lEhsKCW'
-    'hhc19jb2xvchgDIAEoCFIIaGFzQ29sb3ISHwoLY29sb3JfdmFsdWUYBCABKAVSCmNvbG9yVmFs'
+    'hhc19jb2xvchgDIAEoCFIIaGFzQ29sb3ISHwoLY29sb3JfdmFsdWUYBCABKA1SCmNvbG9yVmFs'
     'dWUSGwoJZm9sZGVyX2lkGAUgASgMUghmb2xkZXJJZBIUCgVvcmRlchgGIAEoBVIFb3JkZXI=');
 
 @$core.Deprecated('Use protoFolderDescriptor instead')
@@ -226,14 +226,14 @@ const ProtoTag$json = {
   '2': [
     {'1': 'id', '3': 1, '4': 1, '5': 12, '10': 'id'},
     {'1': 'name', '3': 2, '4': 1, '5': 9, '10': 'name'},
-    {'1': 'color_value', '3': 3, '4': 1, '5': 5, '10': 'colorValue'},
+    {'1': 'color_value', '3': 3, '4': 1, '5': 13, '10': 'colorValue'},
   ],
 };
 
 /// Descriptor for `ProtoTag`. Decode as a `google.protobuf.DescriptorProto`.
 final $typed_data.Uint8List protoTagDescriptor = $convert.base64Decode(
     'CghQcm90b1RhZxIOCgJpZBgBIAEoDFICaWQSEgoEbmFtZRgCIAEoCVIEbmFtZRIfCgtjb2xvcl'
-    '92YWx1ZRgDIAEoBVIKY29sb3JWYWx1ZQ==');
+    '92YWx1ZRgDIAEoDVIKY29sb3JWYWx1ZQ==');
 
 @$core.Deprecated('Use protoTodayFilterDescriptor instead')
 const ProtoTodayFilter$json = {
@@ -419,7 +419,7 @@ const ProtoSmartList$json = {
     {'1': 'id', '3': 1, '4': 1, '5': 12, '10': 'id'},
     {'1': 'name', '3': 2, '4': 1, '5': 9, '10': 'name'},
     {'1': 'icon_code_point', '3': 3, '4': 1, '5': 5, '10': 'iconCodePoint'},
-    {'1': 'color_value', '3': 4, '4': 1, '5': 5, '10': 'colorValue'},
+    {'1': 'color_value', '3': 4, '4': 1, '5': 13, '10': 'colorValue'},
     {
       '1': 'filter',
       '3': 5,
@@ -435,7 +435,7 @@ const ProtoSmartList$json = {
 final $typed_data.Uint8List protoSmartListDescriptor = $convert.base64Decode(
     'Cg5Qcm90b1NtYXJ0TGlzdBIOCgJpZBgBIAEoDFICaWQSEgoEbmFtZRgCIAEoCVIEbmFtZRImCg'
     '9pY29uX2NvZGVfcG9pbnQYAyABKAVSDWljb25Db2RlUG9pbnQSHwoLY29sb3JfdmFsdWUYBCAB'
-    'KAVSCmNvbG9yVmFsdWUSNQoGZmlsdGVyGAUgASgLMh0udG9kb3Blbi5Qcm90b1NtYXJ0TGlzdE'
+    'KA1SCmNvbG9yVmFsdWUSNQoGZmlsdGVyGAUgASgLMh0udG9kb3Blbi5Qcm90b1NtYXJ0TGlzdE'
     'ZpbHRlclIGZmlsdGVy');
 
 @$core.Deprecated('Use protoSyncIndexDescriptor instead')

@@ -658,7 +658,7 @@ class ProtoTaskList extends $pb.GeneratedMessage {
         1, _omitFieldNames ? '' : 'id', $pb.PbFieldType.OY)
     ..aOS(2, _omitFieldNames ? '' : 'name')
     ..aOB(3, _omitFieldNames ? '' : 'hasColor')
-    ..aI(4, _omitFieldNames ? '' : 'colorValue')
+    ..aI(4, _omitFieldNames ? '' : 'colorValue', fieldType: $pb.PbFieldType.OU3)
     ..a<$core.List<$core.int>>(
         5, _omitFieldNames ? '' : 'folderId', $pb.PbFieldType.OY)
     ..aI(6, _omitFieldNames ? '' : 'order')
@@ -714,7 +714,7 @@ class ProtoTaskList extends $pb.GeneratedMessage {
   @$pb.TagNumber(4)
   $core.int get colorValue => $_getIZ(3);
   @$pb.TagNumber(4)
-  set colorValue($core.int value) => $_setSignedInt32(3, value);
+  set colorValue($core.int value) => $_setUnsignedInt32(3, value);
   @$pb.TagNumber(4)
   $core.bool hasColorValue() => $_has(3);
   @$pb.TagNumber(4)
@@ -848,7 +848,7 @@ class ProtoTag extends $pb.GeneratedMessage {
     ..a<$core.List<$core.int>>(
         1, _omitFieldNames ? '' : 'id', $pb.PbFieldType.OY)
     ..aOS(2, _omitFieldNames ? '' : 'name')
-    ..aI(3, _omitFieldNames ? '' : 'colorValue')
+    ..aI(3, _omitFieldNames ? '' : 'colorValue', fieldType: $pb.PbFieldType.OU3)
     ..hasRequiredFields = false;
 
   @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
@@ -890,7 +890,7 @@ class ProtoTag extends $pb.GeneratedMessage {
   @$pb.TagNumber(3)
   $core.int get colorValue => $_getIZ(2);
   @$pb.TagNumber(3)
-  set colorValue($core.int value) => $_setSignedInt32(2, value);
+  set colorValue($core.int value) => $_setUnsignedInt32(2, value);
   @$pb.TagNumber(3)
   $core.bool hasColorValue() => $_has(2);
   @$pb.TagNumber(3)
@@ -1505,7 +1505,7 @@ class ProtoSmartList extends $pb.GeneratedMessage {
         1, _omitFieldNames ? '' : 'id', $pb.PbFieldType.OY)
     ..aOS(2, _omitFieldNames ? '' : 'name')
     ..aI(3, _omitFieldNames ? '' : 'iconCodePoint')
-    ..aI(4, _omitFieldNames ? '' : 'colorValue')
+    ..aI(4, _omitFieldNames ? '' : 'colorValue', fieldType: $pb.PbFieldType.OU3)
     ..aOM<ProtoSmartListFilter>(5, _omitFieldNames ? '' : 'filter',
         subBuilder: ProtoSmartListFilter.create)
     ..hasRequiredFields = false;
@@ -1559,7 +1559,7 @@ class ProtoSmartList extends $pb.GeneratedMessage {
   @$pb.TagNumber(4)
   $core.int get colorValue => $_getIZ(3);
   @$pb.TagNumber(4)
-  set colorValue($core.int value) => $_setSignedInt32(3, value);
+  set colorValue($core.int value) => $_setUnsignedInt32(3, value);
   @$pb.TagNumber(4)
   $core.bool hasColorValue() => $_has(3);
   @$pb.TagNumber(4)
