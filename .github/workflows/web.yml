@@ -29,7 +29,7 @@ jobs:
       # Adjust --base-href to match your GitHub repo name
       - run: flutter build web --release --no-tree-shake-icons --base-href "/${{ github.event.repository.name }}/"
 
-      - uses: actions/upload-pages-artifact@v4
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: build/web
 
@@ -41,4 +41,4 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
