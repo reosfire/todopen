@@ -30,6 +30,13 @@ class ProtoSerializer {
   static Uuid128? _optUuidFromBytes(List<int> bytes) =>
       bytes.isEmpty ? null : _uuidFromBytes(bytes);
 
+  /// ARGB colors are conceptually unsigned 32-bit, but Dart/Flutter and older
+  /// builds of this app may hand us a sign-extended value (e.g. -14235942 for
+  /// 0xFF26C6DA). The proto field is uint32, so normalize before writing and
+  /// after reading to keep both sides in the unsigned domain.
+  static int _colorToProto(int v) => v & 0xFFFFFFFF;
+  static int _colorFromProto(int v) => v & 0xFFFFFFFF;
+
   // ───── RecurrenceRule ─────
 
   static ProtoRecurrenceRule recurrenceToProto(RecurrenceRule r) {
@@ -166,7 +173,7 @@ class ProtoSerializer {
       id: _uuidToBytes(l.id),
       name: l.name,
       hasColor: l.colorValue != null,
-      colorValue: l.colorValue ?? 0,
+      colorValue: _colorToProto(l.colorValue ?? 0),
       folderId: _optUuidToBytes(l.folderId),
       order: l.order,
     );
@@ -178,7 +185,7 @@ class ProtoSerializer {
     return TaskList(
       id: _uuidFromBytes(p.id),
       name: p.name,
-      colorValue: p.hasColor ? p.colorValue : null,
+      colorValue: p.hasColor ? _colorFromProto(p.colorValue) : null,
       folderId: _optUuidFromBytes(p.folderId),
       order: p.order,
     );
@@ -208,7 +215,7 @@ class ProtoSerializer {
       ProtoTag(
         id: _uuidToBytes(t.id),
         name: t.name,
-        colorValue: t.colorValue,
+        colorValue: _colorToProto(t.colorValue),
       ).writeToBuffer(),
     );
   }
@@ -218,7 +225,7 @@ class ProtoSerializer {
     return Tag(
       id: _uuidFromBytes(p.id),
       name: p.name,
-      colorValue: p.colorValue,
+      colorValue: _colorFromProto(p.colorValue),
     );
   }
 
@@ -230,7 +237,7 @@ class ProtoSerializer {
         id: _uuidToBytes(s.id),
         name: s.name,
         iconCodePoint: s.iconCodePoint,
-        colorValue: s.colorValue,
+        colorValue: _colorToProto(s.colorValue),
         filter: filterToProto(s.filter),
       ).writeToBuffer(),
     );
@@ -242,7 +249,7 @@ class ProtoSerializer {
       id: _uuidFromBytes(p.id),
       name: p.name,
       iconCodePoint: p.iconCodePoint,
-      colorValue: p.colorValue,
+      colorValue: _colorFromProto(p.colorValue),
       filter: filterFromProto(p.filter),
     );
   }
