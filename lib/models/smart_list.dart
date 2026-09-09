@@ -237,11 +237,8 @@ class UpcomingFilter extends SmartListFilter {
   }
 
   @override
-  int countTasks(List<Task> allTasks) {
-    return allTasks
-        .where((t) => !t.isCompleted && t.scheduledDate != null)
-        .length;
-  }
+  int countTasks(List<Task> allTasks) =>
+      organize(allTasks).fold(0, (s, sec) => s + sec.tasks.length);
 }
 
 // ───── User-created filter types ─────
@@ -354,16 +351,19 @@ class CompletedFilter extends SmartListFilter {
   @override
   bool get hasInput => false;
 
+  /// A recurring task counts as completed once it has at least one recorded
+  /// completion date; a plain task uses its [Task.isCompleted] flag.
+  static bool _isDone(Task t) =>
+      t.recurrence != null ? t.completedDates.isNotEmpty : t.isCompleted;
+
   @override
   List<TaskSection> organize(List<Task> allTasks) {
-    final tasks = allTasks.where((t) => t.isCompleted).toList()
-      ..sort(_byScheduledDate);
+    final tasks = allTasks.where(_isDone).toList()..sort(_byScheduledDate);
     return [TaskSection(tasks: tasks)];
   }
 
   @override
-  int countTasks(List<Task> allTasks) =>
-      allTasks.where((t) => t.isCompleted).length;
+  int countTasks(List<Task> allTasks) => allTasks.where(_isDone).length;
 }
 
 class AllTasksFilter extends SmartListFilter {

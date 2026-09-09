@@ -42,13 +42,18 @@ class SyncService {
 
   /// Callback invoked when remote changes have been pulled into [AppData].
   /// The caller (AppState) sets this so it can call notifyListeners / save.
-  void Function(AppData)? onRemoteDataChanged;
+  /// Awaited by the poll loop so a slow save cannot overlap the next pull.
+  Future<void> Function(AppData)? onRemoteDataChanged;
 
   /// Current longpoll cursor (Dropbox list_folder cursor).
   String? _longpollCursor;
 
   /// Whether the remote-polling loop is active.
   bool _polling = false;
+
+  /// The currently running (or winding-down) poll loop, so a restart never
+  /// runs two loops concurrently.
+  Future<void>? _pollLoopFuture;
 
   SyncService(this._dropbox, this._storage);
 
@@ -148,18 +153,27 @@ class SyncService {
         // 2. Single remote-index round-trip for the whole batch.
         final remoteIndex = await _downloadRemoteIndex();
         for (final entry in batch.entries) {
-          if (entry.value != null) {
-            remoteIndex.entities[entry.key] = _localIndex.entities[entry.key]!;
+          // The entity may have been deleted (or re-added) between queueing
+          // and flushing, so fall back to the other map rather than asserting.
+          final upsertTime = _localIndex.entities[entry.key];
+          final deleteTime = _localIndex.deletions[entry.key];
+          if (entry.value != null && upsertTime != null) {
+            remoteIndex.entities[entry.key] = upsertTime;
             remoteIndex.deletions.remove(entry.key);
-          } else {
+          } else if (deleteTime != null) {
             remoteIndex.entities.remove(entry.key);
-            remoteIndex.deletions[entry.key] =
-                _localIndex.deletions[entry.key]!;
+            remoteIndex.deletions[entry.key] = deleteTime;
           }
         }
         await _uploadRemoteIndex(remoteIndex);
       } catch (e) {
         debugPrint('Batch sync error: $e');
+        // Re-queue whatever this batch was carrying so the change is not lost.
+        // Newer edits to the same key already in _pendingChanges win.
+        for (final entry in batch.entries) {
+          _pendingChanges.putIfAbsent(entry.key, () => entry.value);
+        }
+        _schedulePush();
       }
     });
   }
@@ -620,7 +634,14 @@ class SyncService {
   void startRemotePolling(AppData Function() currentData) {
     if (_polling) return;
     _polling = true;
-    _pollLoop(currentData);
+    // A previous loop may still be parked in a longpoll after being stopped.
+    // Chain onto it so only one loop is ever live at a time.
+    final previous = _pollLoopFuture;
+    _pollLoopFuture = () async {
+      if (previous != null) await previous;
+      if (!_polling) return;
+      await _pollLoop(currentData);
+    }();
   }
 
   void stopRemotePolling() {
@@ -811,7 +832,7 @@ class SyncService {
           final data = currentData();
           final changed = await pullRemoteChanges(data);
           if (changed && onRemoteDataChanged != null) {
-            onRemoteDataChanged!(data);
+            await onRemoteDataChanged!(data);
           }
         } else {
           // Timeout with no changes – refresh cursor and loop.

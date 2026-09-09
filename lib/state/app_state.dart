@@ -80,20 +80,25 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
 
   /// Pull remote changes and (re)start the longpoll loop.
   Future<void> _pullAndStartPolling() async {
-    final changed = await _syncService.pullRemoteChanges(_data);
-    if (changed) {
-      _ensureDefaults();
-      await _storage.save(_data);
-      notifyListeners();
+    try {
+      final changed = await _syncService.pullRemoteChanges(_data);
+      if (changed) {
+        _ensureDefaults();
+        notifyListeners();
+        await _storage.save(_data);
+      }
+    } catch (e) {
+      debugPrint('Pull error: $e');
     }
     _syncService.startRemotePolling(() => _data);
   }
 
   /// Called by SyncService when the longpoll loop detected and pulled changes.
-  void _onRemoteDataPulled(AppData data) async {
+  Future<void> _onRemoteDataPulled(AppData data) async {
+    _data = data;
     _ensureDefaults();
-    await _storage.save(_data);
     notifyListeners();
+    await _storage.save(_data);
   }
 
   void _initDeepLinks() async {
@@ -311,16 +316,20 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   /// Add a new task to the head of its list's linked list chain.
   /// This atomically adds the task and updates the old head if there is one.
   Future<void> addTaskAsHead(Task newTask) async {
-    final updates = <Task>[newTask];
-
-    // Find current head and update it to point back to new task.
+    // Find the current head before inserting, and link the new task to it
+    // here rather than relying on the caller having set the pointer.
     final pendingTasks = tasksForListOrdered(
       newTask.listId,
       completedSection: newTask.isCompleted,
     );
+    final oldHead = pendingTasks.isNotEmpty ? pendingTasks.first : null;
 
-    if (pendingTasks.isNotEmpty) {
-      final oldHead = pendingTasks.first;
+    newTask.previousTaskId = null;
+    newTask.nextTaskId = oldHead?.id;
+
+    final updates = <Task>[newTask];
+
+    if (oldHead != null) {
       updates.add(
         copyTask(
           oldHead,

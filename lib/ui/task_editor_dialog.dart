@@ -305,10 +305,11 @@ class _TaskEditorDialogState extends State<TaskEditorDialog> {
     );
   }
 
-  void _save() async {
+  Future<void> _save() async {
     final title = _titleCtrl.text.trim();
     if (title.isEmpty) return;
     final state = context.read<AppState>();
+    final navigator = Navigator.of(context);
 
     if (_isEditing) {
       final task = widget.existingTask!;
@@ -342,7 +343,7 @@ class _TaskEditorDialogState extends State<TaskEditorDialog> {
 
       await state.addTaskAsHead(newTask);
     }
-    Navigator.pop(context);
+    navigator.pop();
   }
 
   void _showRecurrencePicker() {
