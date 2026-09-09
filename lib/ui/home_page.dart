@@ -260,10 +260,12 @@ class _HomePageState extends State<HomePage> {
                                 visualDensity: VisualDensity.compact,
                               )
                             : count > 0
-                            ? Text(
-                                '$count',
-                                style: Theme.of(context).textTheme.bodySmall,
-                                textAlign: TextAlign.center,
+                            ? Center(
+                                child: Text(
+                                  '$count',
+                                  style: Theme.of(context).textTheme.bodySmall,
+                                  textAlign: TextAlign.center,
+                                ),
                               )
                             : const SizedBox.shrink(),
                       ),
@@ -393,10 +395,12 @@ class _HomePageState extends State<HomePage> {
                       visualDensity: VisualDensity.compact,
                     )
                   : folderListCount > 0
-                  ? Text(
-                      '$folderListCount',
-                      style: Theme.of(context).textTheme.bodySmall,
-                      textAlign: TextAlign.center,
+                  ? Center(
+                      child: Text(
+                        '$folderListCount',
+                        style: Theme.of(context).textTheme.bodySmall,
+                        textAlign: TextAlign.center,
+                      ),
                     )
                   : const SizedBox.shrink(),
             ),
@@ -543,10 +547,12 @@ class _HomePageState extends State<HomePage> {
                     visualDensity: VisualDensity.compact,
                   )
                 : count > 0
-                ? Text(
-                    '$count',
-                    style: Theme.of(context).textTheme.bodySmall,
-                    textAlign: TextAlign.center,
+                ? Center(
+                    child: Text(
+                      '$count',
+                      style: Theme.of(context).textTheme.bodySmall,
+                      textAlign: TextAlign.center,
+                    ),
                   )
                 : const SizedBox.shrink(),
           ),
