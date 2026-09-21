@@ -564,8 +564,9 @@ class _HomePageState extends State<HomePage> {
           final searchHeight = tileHeight;
           final managementHeight = tileHeight * 2;
           // Section label row: PanelSection pads it 10 above and 2 below, and
-          // the 28px action button is the tallest thing in it.
-          const headerHeight = 40.0;
+          // the action button is the tallest thing in it at IconButton's 40px
+          // minimum tap target.
+          const headerHeight = 52.0;
           const handleHeight = 9.0; // SectionResizeHandle
 
           final fixed =
@@ -777,9 +778,8 @@ class _HomePageState extends State<HomePage> {
     ];
   }
 
-  /// The "+" button in a section header. It is 28px wide inside a header row
-  /// padded 18px on the right, which centres it on the 32px count column of
-  /// the rows below.
+  /// The "+" button in a section header, centred on the count column of the
+  /// rows below it by the header row's right padding.
   Widget _sectionAddButton({
     required String tooltip,
     required VoidCallback onPressed,
@@ -1044,7 +1044,7 @@ class _HomePageState extends State<HomePage> {
       key: key,
       child: (isHovered) {
         final tile = ListTile(
-          contentPadding: EdgeInsets.only(left: 16 + leadingIndent, right: 16),
+          contentPadding: EdgeInsets.only(left: 16 + leadingIndent, right: 24),
           leading: Icon(Icons.list, color: list.color, size: 20),
           title: Text(list.name),
           trailing: SizedBox(
@@ -1381,9 +1381,9 @@ class _SectionHeader extends StatelessWidget {
       ),
     );
     return Padding(
-      // See [PanelSection]: 18px on the right centres a 28px action button on
-      // the 32px count column of the rows below.
-      padding: EdgeInsets.fromLTRB(16, 16, trailing == null ? 16 : 18, 4),
+      // See [PanelSection]: 24px on the right puts the action button over the
+      // count column of the rows below.
+      padding: EdgeInsets.fromLTRB(16, 16, trailing == null ? 16 : 24, 4),
       child: trailing == null
           ? label
           : Row(children: [Expanded(child: label), trailing]),
