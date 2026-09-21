@@ -178,14 +178,15 @@ class PanelSection extends StatelessWidget {
         if (title != null)
           Padding(
             // With actions, the right padding puts the buttons over the count
-            // column of the rows below. An IconButton keeps a 40px minimum tap
-            // target whatever constraints it is given, so it is 4px wider on
-            // each side than the 32px count box; 24px of padding lines their
-            // right edges up, which is what reads as aligned.
+            // column of the rows below. The value is larger than it looks like
+            // it should be because an IconButton keeps a 40px minimum tap
+            // target whatever constraints it is given, and the panel's resize
+            // handle takes width from the rows but not from this row; 30 is
+            // what measures as aligned on screen.
             padding: EdgeInsets.fromLTRB(
               16,
               10,
-              headerActions.isEmpty ? 16 : 24,
+              headerActions.isEmpty ? 16 : 30,
               2,
             ),
             child: Row(

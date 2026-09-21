@@ -1381,9 +1381,9 @@ class _SectionHeader extends StatelessWidget {
       ),
     );
     return Padding(
-      // See [PanelSection]: 24px on the right puts the action button over the
-      // count column of the rows below.
-      padding: EdgeInsets.fromLTRB(16, 16, trailing == null ? 16 : 24, 4),
+      // See [PanelSection]: the same right padding puts the action button over
+      // the count column of the rows below.
+      padding: EdgeInsets.fromLTRB(16, 16, trailing == null ? 16 : 30, 4),
       child: trailing == null
           ? label
           : Row(children: [Expanded(child: label), trailing]),
