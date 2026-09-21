@@ -15,19 +15,66 @@ flutter build apk --release --obfuscate --split-debug-info=build/debug-info
 flutter build web --release --base-href "/<repo-name>/"
 ```
 
+Requires Flutter 3.9+. The web build deploys to GitHub Pages
+(`https://reosfire.github.io/Todo/`); the APK is uploaded as a run artifact.
+
 Code generation for drift (`lib/services/app_database.g.dart`):
 
 ```bash
 dart run build_runner build --delete-conflicting-outputs
 ```
 
+`README.md` is user-facing only. Keep implementation detail out of it — it lives here.
+
+## Sync design
+
+Remote layout (Dropbox app folder):
+
+```
+/manifest                  tiny root pointer, the only mutable file
+/base/<shard>.<gen>.tc     snapshot chunks, sharded by list
+/seg/<seq>-<device>.ts     immutable operation-log segments
+```
+
+Base-plus-log is a deliberate compromise. Snapshot-only makes cold start cheap
+and every edit expensive; file-per-entity (what v1 did) does the reverse and
+needs one HTTP request per task. Here a cold start reads the base chunks while
+a small edit appends a few hundred bytes. Once the log passes a threshold it is
+folded into a new base generation, rewriting only the shards whose bytes
+actually changed. `benchmark_test.dart` pins the resulting budgets:
+
+| workload | cost |
+|---|---|
+| first download, 2000 tasks | ~13 requests, ~150 KB |
+| tick one checkbox | ~350 B, 2 writes |
+| drag one task | ~230 B, 2 writes |
+| 300 edits made offline | ~15 KB, 2 writes |
+
+Correctness rests on five things:
+
+- **Compare-and-swap.** `/manifest` is written with Dropbox's
+  `WriteMode.update`, which only succeeds if the file's rev is unchanged. A
+  device that loses the race re-reads, replays what it missed, rebases its own
+  work and retries, so no write is silently dropped. Segments and base chunks
+  are immutable, so nothing else can conflict.
+- **Hybrid logical clocks.** Ordering uses `(physical, counter, deviceId)`
+  rather than wall time, so clock skew cannot invert two edits and every device
+  resolves a conflict the same way.
+- **Per-field merging.** Each field carries its own timestamp, so a title edit
+  on one device and a checkbox tick on another both survive.
+- **Dense ordering arrays.** Order is an array plus replayed moves, so a
+  reorder is one op and the ordering cannot corrupt.
+- **Checksums.** Every stored block is CRC-32C protected; a truncated or
+  corrupt download is rejected rather than replayed.
+
+```
+lib/sync/format/     binary codecs (byte_io, segment, chunk, manifest)
+lib/sync/model/      HLC clocks, operations, replicated entities
+lib/sync/engine/     replica (merge rules) and sync_engine (protocol)
+lib/sync/            domain_mapper, dropbox_store, local_store
+```
+
 ## Architecture
-
-Read `README.md` first: it documents the sync design (remote layout, CAS on
-`/manifest`, hybrid logical clocks, per-field merging, compaction) in detail
-and is kept current. This file covers the app layers around it.
-
-The layering is strict, and edits should respect it:
 
 ```
 ui/          widgets; read + mutate only via AppState (Provider)
