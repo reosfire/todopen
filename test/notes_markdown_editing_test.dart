@@ -44,7 +44,7 @@ void main() {
       ),
     );
 
-    // The notes field is the multi-line one; the title field is the other.
+    // The notes field is the only one the panel renders.
     final field = tester.widget<TextField>(
       find.byWidgetPredicate((w) => w is TextField && w.maxLines == null),
     );
@@ -276,9 +276,9 @@ void main() {
   });
 
   group('layout', () {
-    // The header packs a title field, save status, mode chips and a word count
-    // into one row, and the format bar holds eleven controls. Both have to
-    // survive a phone-width bottom sheet without overflowing.
+    // The header packs save status, mode chips and a word count into one
+    // row, and the format bar holds eleven controls. Both have to survive a
+    // phone-width bottom sheet without overflowing.
     for (final width in <double>[320, 360, 420, 560, 900]) {
       testWidgets('renders without overflow at ${width.toInt()}px', (
         tester,
@@ -325,6 +325,45 @@ fenced code
 
       expect(tester.takeException(), isNull);
       expect(find.textContaining('Title'), findsWidgets);
+    });
+
+    testWidgets('does not render the task title', (tester) async {
+      // The title belongs to the task list; showing it here duplicated it and
+      // ate a row of vertical space above the editor.
+      await pumpPanel(tester, notes: 'body');
+      await tester.pump(const Duration(milliseconds: 16));
+
+      expect(find.text('Task'), findsNothing);
+      expect(find.widgetWithText(TextField, 'Task title'), findsNothing);
+      // Exactly one field: the notes body.
+      expect(find.byType(TextField), findsOneWidget);
+    });
+
+    testWidgets('editor keeps its position when the save status changes', (
+      tester,
+    ) async {
+      // The status used to swap a tall button for a short label, which resized
+      // the header and shunted the editor down every time an autosave landed.
+      // Asserting on the editor's size and origin covers both directions: the
+      // header growing pushes it down, and it shrinking to compensate.
+      final ctrl = await pumpPanel(tester, notes: 'body');
+      final editor = find.byType(TextField);
+      final cleanOrigin = tester.getTopLeft(editor);
+      final cleanSize = tester.getSize(editor);
+
+      // Dirty: the unsaved indicator is showing.
+      ctrl.text = 'body edited';
+      await tester.pump(const Duration(milliseconds: 16));
+      expect(tester.getTopLeft(editor), cleanOrigin,
+          reason: 'the unsaved indicator must not move the editor');
+      expect(tester.getSize(editor), cleanSize,
+          reason: 'the unsaved indicator must not resize the editor');
+
+      // And back again, the way an autosave completing would leave it.
+      ctrl.text = 'body';
+      await tester.pump(const Duration(milliseconds: 16));
+      expect(tester.getTopLeft(editor), cleanOrigin);
+      expect(tester.getSize(editor), cleanSize);
     });
 
     testWidgets('split view shows editor and preview together', (tester) async {
