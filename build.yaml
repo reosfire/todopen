@@ -1,21 +1,19 @@
-builders:
-  proto:
-    import: "package:todopen/builders.dart"
-    builder_factories: ["protoBuilder"]
-    build_extensions:
-      "proto/{{}}.proto":
-        - "lib/proto/{{}}.pb.dart"
-        - "lib/proto/{{}}.pbenum.dart"
-        - "lib/proto/{{}}.pbjson.dart"
-    auto_apply: root_package
-    build_to: source
-    runs_before:
-      - "drift_dev:drift_dev"
+# NOTE: web/drift_worker.js is also a generated file, but it can't go through
+# build_runner because `dart compile js` writes directly to a file path.
+# Recompile it manually after upgrading the `drift` package:
+#
+#   dart compile js -O2 -o web/drift_worker.js \
+#       --packages .dart_tool/package_config.json \
+#       -Dpackage:drift/wasm.dart
+#
+# Shorter version using a one-liner entry point:
+#   echo "import 'package:drift/wasm.dart'; void main() => WasmDatabase.workerMainForOpen();" \
+#       > web/_worker_entry.dart && \
+#   dart compile js -O2 -o web/drift_worker.js web/_worker_entry.dart && \
+#   rm web/_worker_entry.dart
 
-# Make build_runner scan the proto/ directory for inputs.
 targets:
   $default:
     sources:
-      - proto/**
       - lib/**
       - $package$

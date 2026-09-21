@@ -100,35 +100,9 @@ between two devices, and per-workload size budgets.
 flutter build apk --release --shrink --obfuscate --split-debug-info=build/debug-info
 ```
 
-## Migrating from the v1 sync format
+## Code generation
 
-Earlier versions stored one Dropbox file per entity plus an `/index.bin`.
-`tool/migrate_v2.dart` converts that tree in place. It needs a short-lived
-access token from
-[the Dropbox app console](https://www.dropbox.com/developers/apps) →
-your app → *Generated access token*.
-
-```bash
-# 1. Dry run: reports what it would write and verifies the round-trip.
-dart run tool/migrate_v2.dart --token <token>
-
-# 2. Upload the v2 store. The old files are left in place.
-dart run tool/migrate_v2.dart --token <token> --commit
-
-# 3. Once the app has been running against it happily, drop the v1 files.
-dart run tool/migrate_v2.dart --token <token> --commit --delete-old
-```
-
-The migration rebuilds task ordering from the old intrusive linked list,
-repairing any cycles or orphaned tasks it finds. Run it while no device is
-writing. Afterwards each device re-downloads from scratch on first launch.
-
-Once the migration is done, `lib/proto/`, `lib/builders.dart`, `proto/` and
-the `protobuf` dependency are no longer used by anything and can be removed.
-
-### Compiling protobuf (v1 format only)
-
-Only needed while the migration tool is still around:
+Only drift's `lib/services/app_database.g.dart` is generated:
 
 ```bash
 dart run build_runner build --delete-conflicting-outputs

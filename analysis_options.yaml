@@ -1,7 +1,1 @@
 include: package:flutter_lints/flutter.yaml
-
-analyzer:
-  exclude:
-    # Builder code must live in lib/ to be importable by build_runner,
-    # but legitimately imports dev-only packages (package:build).
-    - lib/builders.dart

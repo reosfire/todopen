@@ -14,120 +14,9 @@ import 'package:todopen/utils/uuid128.dart';
 
 import 'replica_test.dart' show uid;
 
-/// Reimplementation of the migration's linked-list walk, so the algorithm
-/// that rebuilds ordering from v1 data is tested without needing a live
-/// Dropbox account.
-///
-/// Mirrors `tool/migrate_v2.dart::_walkChain`.
-({List<Uuid128> ids, bool broken}) walkChain(
-  List<({Uuid128 id, Uuid128? prev, Uuid128? next, int createdMs})> tasks,
-) {
-  final byId = {for (final t in tasks) t.id: t};
-  final hasPrev = <Uuid128>{};
-  for (final t in tasks) {
-    if (t.prev != null && byId.containsKey(t.prev)) hasPrev.add(t.id);
-  }
-
-  Uuid128? head;
-  for (final t in tasks) {
-    if (!hasPrev.contains(t.id)) {
-      head = t.id;
-      break;
-    }
-  }
-
-  final out = <Uuid128>[];
-  final seen = <Uuid128>{};
-  var cursor = head;
-  while (cursor != null && seen.add(cursor)) {
-    out.add(cursor);
-    final t = byId[cursor];
-    if (t == null || t.next == null) break;
-    cursor = byId.containsKey(t.next) ? t.next : null;
-  }
-
-  final orphans = byId.keys.where((id) => !seen.contains(id)).toList()
-    ..sort((a, b) => byId[b]!.createdMs.compareTo(byId[a]!.createdMs));
-  out.addAll(orphans);
-  return (ids: out, broken: orphans.isNotEmpty);
-}
-
 void main() {
-  _migrationParityTests();
+  _formatPinningTests();
 
-  group('linked list → dense array', () {
-    ({Uuid128 id, Uuid128? prev, Uuid128? next, int createdMs}) t(
-      int n, {
-      int? prev,
-      int? next,
-      int created = 0,
-    }) => (
-      id: uid(n),
-      prev: prev == null ? null : uid(prev),
-      next: next == null ? null : uid(next),
-      createdMs: created,
-    );
-
-    test('walks a well-formed chain', () {
-      final result = walkChain([
-        t(2, prev: 1, next: 3),
-        t(1, next: 2),
-        t(3, prev: 2),
-      ]);
-      expect(result.ids, [uid(1), uid(2), uid(3)]);
-      expect(result.broken, isFalse);
-    });
-
-    test('single task', () {
-      final result = walkChain([t(1)]);
-      expect(result.ids, [uid(1)]);
-      expect(result.broken, isFalse);
-    });
-
-    test('recovers orphans rather than dropping them', () {
-      // uid(9) is in no chain at all — the v1 format allowed this and the
-      // old UI silently appended such tasks.
-      final result = walkChain([
-        t(1, next: 2),
-        t(2, prev: 1),
-        t(9, created: 500),
-      ]);
-      expect(result.ids.toSet(), {uid(1), uid(2), uid(9)});
-      expect(result.ids.last, uid(9));
-      expect(result.broken, isTrue);
-    });
-
-    test('survives a cycle without hanging', () {
-      // A ↔ B pointing at each other, which the old code guarded against.
-      final result = walkChain([
-        t(1, prev: 2, next: 2),
-        t(2, prev: 1, next: 1),
-      ]);
-      expect(result.ids.toSet(), {uid(1), uid(2)});
-      expect(result.ids.length, 2, reason: 'no duplicates from the cycle');
-    });
-
-    test('dangling next pointer stops the walk cleanly', () {
-      final result = walkChain([t(1, next: 404), t(2, created: 1)]);
-      expect(result.ids.toSet(), {uid(1), uid(2)});
-    });
-
-    test('orphans are ordered newest-first, matching the old UI', () {
-      final result = walkChain([
-        t(1, next: 2),
-        t(2, prev: 1),
-        t(7, created: 100),
-        t(8, created: 300),
-        t(9, created: 200),
-      ]);
-      expect(result.ids.sublist(0, 2), [uid(1), uid(2)]);
-      expect(result.ids.sublist(2), [uid(8), uid(9), uid(7)]);
-    });
-
-    test('empty input', () {
-      expect(walkChain([]).ids, isEmpty);
-    });
-  });
 
   group('recurrence blob round-trip', () {
     test('covers every rule type', () {
@@ -347,18 +236,18 @@ void main() {
   });
 }
 
-/// The migration script re-implements three encoders (recurrence blob,
-/// filter blob, days-since-epoch) against the protobuf types, because it
-/// must run under plain `dart run` and the model layer pulls in Flutter.
+/// These encoders (recurrence blob, filter blob, days-since-epoch) and the
+/// order scopes define the on-the-wire layout of a synced store.
 ///
-/// Duplicated encoders can drift, and a drift here writes a store the app
-/// then misreads. These tests pin the two implementations to the same bytes.
-/// If one changes, this fails.
-void _migrationParityTests() {
-  group('migration encoder parity', () {
+/// Changing any of them silently reinterprets bytes other devices have
+/// already written, so the expected values are spelled out literally here
+/// rather than derived from the implementation. If a layout changes, this
+/// fails — which is the point.
+void _formatPinningTests() {
+  group('wire format pinning', () {
     test('recurrence blob layout is byte-identical', () {
-      // Mirrors tool/migrate_v2.dart::_recurrenceBlob.
-      Uint8List viaMigration(int tag, List<int> varints) {
+      // The layout: one tag byte, then the rule's varint arguments.
+      Uint8List expected(int tag, List<int> varints) {
         final w = ByteWriter(8);
         w.u8(tag);
         for (final v in varints) {
@@ -379,14 +268,14 @@ void _migrationParityTests() {
       for (final (rule, tag, args) in cases) {
         expect(
           DomainMapper.recurrenceToBlob(rule),
-          viaMigration(tag, args),
+          expected(tag, args),
           reason: rule.describe(),
         );
       }
     });
 
-    test('filter blob tags match the migration script', () {
-      // The migration writes these tag bytes; DomainMapper must agree.
+    test('filter blob tag bytes are stable', () {
+      // These tag bytes are part of the stored format and must not shift.
       final expected = <SmartListFilter, int>{
         const TodayFilter(): 0,
         const TomorrowFilter(): 1,
@@ -406,9 +295,9 @@ void _migrationParityTests() {
       });
     });
 
-    test('days-since-epoch matches the migration script', () {
-      // Mirrors tool/migrate_v2.dart::_toDays.
-      int viaMigration(int millis) {
+    test('days-since-epoch uses the UTC calendar date', () {
+      // Days since the Unix epoch, taken from the UTC calendar date.
+      int expectedDays(int millis) {
         final d = DateTime.fromMillisecondsSinceEpoch(millis);
         return DateTime.utc(d.year, d.month, d.day).millisecondsSinceEpoch ~/
             86400000;
@@ -421,22 +310,20 @@ void _migrationParityTests() {
       ]) {
         expect(
           DomainMapper.toDays(d),
-          viaMigration(d.millisecondsSinceEpoch),
+          expectedDays(d.millisecondsSinceEpoch),
           reason: '$d',
         );
       }
     });
 
-    test('sidebar scope matches the one the migration writes', () {
-      final migrationScope = OrderScope(
-        EntityKind.list,
-        Uuid128.fromBytes(Uint8List(16)),
-        0,
+    test('sidebar scope is the zero-uuid list scope', () {
+      expect(
+        DomainMapper.sidebarScope,
+        OrderScope(EntityKind.list, Uuid128.fromBytes(Uint8List(16)), 0),
       );
-      expect(DomainMapper.sidebarScope, migrationScope);
     });
 
-    test('task scope lanes match the migration', () {
+    test('task scope lanes split pending from completed', () {
       final list = uid(5);
       expect(
         DomainMapper.taskScope(list, completed: false),
