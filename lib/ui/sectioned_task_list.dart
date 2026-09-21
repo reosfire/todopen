@@ -33,6 +33,19 @@ class SectionedTaskList extends StatefulWidget {
   /// Callback when a task is selected (tapped).
   final void Function(Task task)? onTaskSelected;
 
+  /// Message shown when there are no tasks to display.
+  final String emptyMessage;
+
+  /// Icon shown alongside [emptyMessage].
+  final IconData emptyIcon;
+
+  /// Builds the tile subtitle. Falls back to the default subtitle when null.
+  final Widget? Function(BuildContext context, Task task)? subtitleBuilder;
+
+  /// Builds the tile title. Falls back to plain text when null.
+  final Widget? Function(BuildContext context, Task task, TextStyle? style)?
+      titleBuilder;
+
   const SectionedTaskList({
     super.key,
     required this.sections,
@@ -43,6 +56,10 @@ class SectionedTaskList extends StatefulWidget {
     this.toggleDate,
     this.selectedTaskId,
     this.onTaskSelected,
+    this.emptyMessage = 'No tasks',
+    this.emptyIcon = Icons.inbox_outlined,
+    this.subtitleBuilder,
+    this.titleBuilder,
   });
 
   @override
@@ -82,13 +99,13 @@ class _SectionedTaskListState extends State<SectionedTaskList> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Icon(
-                    Icons.inbox_outlined,
+                    widget.emptyIcon,
                     size: 64,
                     color: Theme.of(context).colorScheme.outlineVariant,
                   ),
                   const SizedBox(height: 12),
                   Text(
-                    'No tasks',
+                    widget.emptyMessage,
                     style: Theme.of(context).textTheme.bodyLarge,
                   ),
                 ],
@@ -202,6 +219,8 @@ class _SectionedTaskListState extends State<SectionedTaskList> {
               toggleDate: widget.toggleDate,
               selected: widget.selectedTaskId == task.id.toString(),
               onSelected: widget.onTaskSelected,
+              subtitleBuilder: widget.subtitleBuilder,
+              titleBuilder: widget.titleBuilder,
             );
           },
         ),
@@ -221,6 +240,8 @@ class _SectionedTaskListState extends State<SectionedTaskList> {
                 toggleDate: widget.toggleDate,
                 selected: widget.selectedTaskId == task.id.toString(),
                 onSelected: widget.onTaskSelected,
+                subtitleBuilder: widget.subtitleBuilder,
+                titleBuilder: widget.titleBuilder,
               );
             },
             childCount: section.tasks.length,
@@ -251,6 +272,13 @@ class TaskTile extends StatefulWidget {
   final bool selected;
   final void Function(Task task)? onSelected;
 
+  /// Overrides the tile subtitle when it returns a non-null widget.
+  final Widget? Function(BuildContext context, Task task)? subtitleBuilder;
+
+  /// Overrides the tile title when it returns a non-null widget.
+  final Widget? Function(BuildContext context, Task task, TextStyle? style)?
+      titleBuilder;
+
   const TaskTile({
     required super.key,
     required this.task,
@@ -260,6 +288,8 @@ class TaskTile extends StatefulWidget {
     this.toggleDate,
     this.selected = false,
     this.onSelected,
+    this.subtitleBuilder,
+    this.titleBuilder,
   });
 
   @override
@@ -418,19 +448,11 @@ class _TaskTileState extends State<TaskTile> {
                     onPointerDown: (event) {
                       _tapDownPosition = event.position;
                     },
-                    child: Text(
-                      key: _titleTextKey,
-                      task.title,
-                      style: TextStyle(
-                        decoration:
-                            completed ? TextDecoration.lineThrough : null,
-                        color: completed
-                            ? Theme.of(context).colorScheme.onSurfaceVariant
-                            : null,
-                      ),
-                    ),
+                    child: _buildTitle(context, completed),
                   ),
-            subtitle: _buildSubtitle(context, state),
+            subtitle:
+                widget.subtitleBuilder?.call(context, task) ??
+                _buildSubtitle(context, state),
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -489,6 +511,18 @@ class _TaskTileState extends State<TaskTile> {
       ),
     ),
     );
+  }
+
+  Widget _buildTitle(BuildContext context, bool completed) {
+    final style = TextStyle(
+      decoration: completed ? TextDecoration.lineThrough : null,
+      color: completed
+          ? Theme.of(context).colorScheme.onSurfaceVariant
+          : null,
+    );
+    final custom = widget.titleBuilder?.call(context, widget.task, style);
+    if (custom != null) return custom;
+    return Text(key: _titleTextKey, widget.task.title, style: style);
   }
 
   Widget? _buildSubtitle(BuildContext context, AppState state) {

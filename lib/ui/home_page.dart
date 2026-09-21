@@ -16,6 +16,10 @@ import '../models/smart_list.dart';
 import 'smart_list_editor_dialog.dart';
 import 'tag_manager_dialog.dart';
 import 'sync_settings_page.dart';
+import 'search_view.dart';
+
+/// Whether a search covers every task or only the selected list.
+enum SearchScope { global, list }
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -34,6 +38,14 @@ class _HomePageState extends State<HomePage> {
   bool _isLockedRight = false;
   Set<Uuid128> _expandedFolderIds = {};
   final _storageService = StorageService();
+
+  /// Search state. [_searchScope] decides whether the query runs over every
+  /// task or only the list that was selected when search was opened.
+  bool _searchActive = false;
+  SearchScope _searchScope = SearchScope.global;
+  String _searchQuery = '';
+  final TextEditingController _searchController = TextEditingController();
+  final FocusNode _searchFocus = FocusNode();
 
   @override
   void initState() {
@@ -70,11 +82,64 @@ class _HomePageState extends State<HomePage> {
     await _storageService.saveExpandedFolderIds(_expandedFolderIds);
   }
 
+  @override
+  void dispose() {
+    _searchController.dispose();
+    _searchFocus.dispose();
+    super.dispose();
+  }
+
+  /// Opens the search field. A list-scoped search keeps the current list
+  /// selected so closing search returns to exactly where the user was.
+  void _openSearch(SearchScope scope, {bool closeDrawer = false}) {
+    setState(() {
+      _searchActive = true;
+      _searchScope = scope;
+      _searchController.clear();
+      _searchQuery = '';
+      _selectedTask = null;
+    });
+    if (closeDrawer && _isNarrow) Navigator.pop(context);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _searchFocus.requestFocus();
+    });
+  }
+
+  /// Clears search state. Call inside an existing setState.
+  void _exitSearch() {
+    if (!_searchActive) return;
+    _searchActive = false;
+    _searchQuery = '';
+    _searchController.clear();
+    _searchFocus.unfocus();
+  }
+
+  void _closeSearch() {
+    setState(() {
+      _searchActive = false;
+      _searchQuery = '';
+      _searchController.clear();
+      _selectedTask = null;
+    });
+    _searchFocus.unfocus();
+  }
+
+  /// The list a scoped search runs against, or null when searching globally.
+  /// Smart lists have no single backing list, and a list deleted while search
+  /// is open no longer resolves, so both fall back to a global search.
+  Uuid128? _searchListId(AppState state) {
+    if (_searchScope != SearchScope.list) return null;
+    final id = _selectedListId;
+    if (id == null || state.listById(id) == null) return null;
+    return id;
+  }
+
   void _selectList(Uuid128 id) {
     setState(() {
       _selectedListId = id;
       _selectedSmartListId = null;
       _selectedTask = null;
+      _exitSearch();
     });
     _storageService.saveSelectedListId(id);
     _storageService.saveSelectedSmartListId(null);
@@ -86,6 +151,7 @@ class _HomePageState extends State<HomePage> {
       _selectedSmartListId = id;
       _selectedListId = null;
       _selectedTask = null;
+      _exitSearch();
     });
     _storageService.saveSelectedSmartListId(id);
     _storageService.saveSelectedListId(null);
@@ -143,12 +209,32 @@ class _HomePageState extends State<HomePage> {
   }
 
   PreferredSizeWidget _buildAppBar(AppState state) {
+    if (_searchActive) {
+      return AppBar(
+        scrolledUnderElevation: 0,
+        backgroundColor: Theme.of(context).colorScheme.surface,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: _closeSearch,
+          tooltip: 'Close search',
+        ),
+        title: _buildSearchField(state),
+      );
+    }
+
     String title = _getAppBarTitle(state);
     return AppBar(
       title: Text(title),
       scrolledUnderElevation: 0,
       backgroundColor: Theme.of(context).colorScheme.surface,
       actions: [
+        IconButton(
+          icon: const Icon(Icons.search),
+          onPressed: () => _openSearch(
+            _selectedListId != null ? SearchScope.list : SearchScope.global,
+          ),
+          tooltip: _selectedListId != null ? 'Search this list' : 'Search',
+        ),
         if (state.syncing)
           const Padding(
             padding: EdgeInsets.all(12),
@@ -169,6 +255,25 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _buildWideAppBar(AppState state) {
+    if (_searchActive) {
+      return Container(
+        height: 56,
+        color: Theme.of(context).colorScheme.surface,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Row(
+          children: [
+            Expanded(child: _buildSearchField(state)),
+            const SizedBox(width: 8),
+            IconButton(
+              icon: const Icon(Icons.close),
+              onPressed: _closeSearch,
+              tooltip: 'Close search',
+            ),
+          ],
+        ),
+      );
+    }
+
     String title = _getAppBarTitle(state);
     return Container(
       height: 56,
@@ -178,6 +283,13 @@ class _HomePageState extends State<HomePage> {
         children: [
           Text(title, style: Theme.of(context).textTheme.titleLarge),
           const Spacer(),
+          IconButton(
+            icon: const Icon(Icons.search),
+            onPressed: () => _openSearch(
+              _selectedListId != null ? SearchScope.list : SearchScope.global,
+            ),
+            tooltip: _selectedListId != null ? 'Search this list' : 'Search',
+          ),
           if (state.syncing)
             const SizedBox(
               width: 20,
@@ -192,6 +304,71 @@ class _HomePageState extends State<HomePage> {
             ),
         ],
       ),
+    );
+  }
+
+  /// The search input, plus a chip to switch between searching the current
+  /// list and searching everything.
+  Widget _buildSearchField(AppState state) {
+    final theme = Theme.of(context);
+    final listName = _selectedListId != null
+        ? state.listById(_selectedListId!)?.name
+        : null;
+    final scopedAvailable = listName != null;
+    final scoped = _searchScope == SearchScope.list && scopedAvailable;
+
+    return Row(
+      children: [
+        Expanded(
+          child: TextField(
+            controller: _searchController,
+            focusNode: _searchFocus,
+            autofocus: true,
+            textInputAction: TextInputAction.search,
+            style: theme.textTheme.bodyLarge,
+            decoration: InputDecoration(
+              hintText: scoped ? 'Search in $listName...' : 'Search all tasks...',
+              border: InputBorder.none,
+              isDense: true,
+              suffixIcon: _searchQuery.isEmpty
+                  ? null
+                  : IconButton(
+                      icon: const Icon(Icons.clear, size: 18),
+                      onPressed: () {
+                        _searchController.clear();
+                        setState(() => _searchQuery = '');
+                        _searchFocus.requestFocus();
+                      },
+                      tooltip: 'Clear',
+                    ),
+            ),
+            onChanged: (value) => setState(() => _searchQuery = value),
+          ),
+        ),
+        if (scopedAvailable) ...[
+          const SizedBox(width: 8),
+          Tooltip(
+            message: scoped
+                ? 'Searching in $listName - tap to search everywhere'
+                : 'Searching everywhere - tap to search in $listName',
+            child: FilterChip(
+              label: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 120),
+                child: Text(
+                  scoped ? listName : 'All',
+                  overflow: TextOverflow.ellipsis,
+                  softWrap: false,
+                ),
+              ),
+              selected: scoped,
+              visualDensity: VisualDensity.compact,
+              onSelected: (_) => setState(() {
+                _searchScope = scoped ? SearchScope.global : SearchScope.list;
+              }),
+            ),
+          ),
+        ],
+      ],
     );
   }
 
@@ -214,6 +391,18 @@ class _HomePageState extends State<HomePage> {
             child: ListView(
               padding: EdgeInsets.zero,
               children: [
+                // Global search across every list.
+                ListTile(
+                  leading: const Icon(Icons.search, size: 20),
+                  title: const Text('Search'),
+                  selected: _searchActive &&
+                      _searchScope == SearchScope.global,
+                  dense: true,
+                  onTap: () =>
+                      _openSearch(SearchScope.global, closeDrawer: true),
+                ),
+                const Divider(),
+
                 // Smart lists
                 const _SectionHeader('SMART LISTS'),
                 // Built-in smart lists (always shown, not editable)
@@ -571,7 +760,17 @@ class _HomePageState extends State<HomePage> {
 
   Widget _buildBody(AppState state) {
     Widget listView;
-    if (_selectedSmartListId != null) {
+    if (_searchActive) {
+      listView = SearchView(
+        query: _searchQuery,
+        listId: _searchListId(state),
+        selectedTaskId: _selectedTask?.id.toString(),
+        onTaskSelected: (t) {
+          setState(() => _selectedTask = t);
+          if (_isNarrow) _showNotesPanelSheet(state, t);
+        },
+      );
+    } else if (_selectedSmartListId != null) {
       final sl = state.smartListById(_selectedSmartListId!);
       if (sl != null) {
         listView = SmartListView(
