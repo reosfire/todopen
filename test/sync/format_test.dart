@@ -26,6 +26,8 @@ Uuid128 uid(int n) => Uuid128.fromBytes(
 );
 
 void main() {
+  _largeValueTests();
+
   group('varint', () {
     test('round-trips boundary values', () {
       final values = [
@@ -673,6 +675,102 @@ void main() {
           reason: 'truncated to $cut bytes must not decode cleanly',
         );
       }
+    });
+  });
+}
+
+/// Values in these tests exceed 32 bits on purpose.
+///
+/// This app ships to the web, where Dart ints are JavaScript doubles and the
+/// bitwise operators are defined only over the low 32 bits. Any encoder
+/// written with shifts silently corrupts large values there while passing
+/// every test on the VM, so the wire format is exercised specifically at
+/// realistic timestamp magnitudes.
+void _largeValueTests() {
+  group('large values (web/dart2js safety)', () {
+    test('varint round-trips values far beyond 32 bits', () {
+      final values = [
+        0xFFFFFFFF, // 2^32-1
+        0x100000000, // 2^32
+        1789983327766, // a real ms timestamp
+        DateTime.now().millisecondsSinceEpoch,
+        DateTime.now().microsecondsSinceEpoch,
+        (1 << 48) - 1,
+        (1 << 52) - 1,
+      ];
+      final w = ByteWriter();
+      for (final v in values) {
+        w.varint(v);
+      }
+      final r = ByteReader(w.takeBytes());
+      for (final v in values) {
+        expect(r.varint(), v, reason: 'varint $v');
+      }
+    });
+
+    test('signed varint round-trips large magnitudes both ways', () {
+      final values = [
+        1789983327766,
+        -1789983327766,
+        0x100000000,
+        -0x100000000,
+        (1 << 48) - 1,
+        -((1 << 48) - 1),
+      ];
+      final w = ByteWriter();
+      for (final v in values) {
+        w.svarint(v);
+      }
+      final r = ByteReader(w.takeBytes());
+      for (final v in values) {
+        expect(r.svarint(), v, reason: 'svarint $v');
+      }
+    });
+
+    test('Hlc round-trips real wall-clock timestamps', () {
+      // 41+ bits: the exact range a shift-based encoder gets wrong.
+      final values = [
+        Hlc(DateTime.now().millisecondsSinceEpoch, 0, 1),
+        Hlc(DateTime.now().millisecondsSinceEpoch, 0xFFFF, 0xFFFFFFFF),
+        const Hlc(1789983327766, 42, 7),
+        Hlc.max,
+      ];
+      for (final h in values) {
+        final buf = Uint8List(Hlc.encodedSize);
+        h.writeTo(buf, 0);
+        final back = Hlc.readFrom(buf, 0);
+        expect(back.physical, h.physical, reason: 'physical of $h');
+        expect(back.counter, h.counter);
+        expect(back.deviceId, h.deviceId);
+      }
+    });
+
+    test('Hlc byte order still matches numeric order at real timestamps', () {
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final a = Uint8List(12), b = Uint8List(12);
+      Hlc(now, 0, 0).writeTo(a, 0);
+      Hlc(now + 1, 0, 0).writeTo(b, 0);
+      var cmp = 0;
+      for (var i = 0; i < 12 && cmp == 0; i++) {
+        cmp = a[i].compareTo(b[i]);
+      }
+      expect(cmp, lessThan(0));
+    });
+
+    test('timestamps survive a full op round-trip', () {
+      final ms = DateTime.now().millisecondsSinceEpoch;
+      final seg = Segment.fromOps([
+        SetFieldOp(
+          Hlc(ms, 1, 2),
+          EntityKind.task,
+          uid(1),
+          TaskField.scheduledDate,
+          TimestampValue(ms),
+        ),
+      ], 1);
+      final op = Segment.decode(seg.encode()).ops.first as SetFieldOp;
+      expect((op.value as TimestampValue).millis, ms);
+      expect(op.hlc.physical, ms);
     });
   });
 }

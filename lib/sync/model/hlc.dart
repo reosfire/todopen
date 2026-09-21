@@ -67,12 +67,19 @@ class Hlc implements Comparable<Hlc> {
 
   void writeTo(Uint8List out, int offset) {
     // 48-bit physical, big-endian so byte order matches numeric order.
-    out[offset] = (physical >> 40) & 0xFF;
-    out[offset + 1] = (physical >> 32) & 0xFF;
-    out[offset + 2] = (physical >> 24) & 0xFF;
-    out[offset + 3] = (physical >> 16) & 0xFF;
-    out[offset + 4] = (physical >> 8) & 0xFF;
-    out[offset + 5] = physical & 0xFF;
+    //
+    // Split into two 24-bit halves via division rather than shifting: on
+    // dart2js an int is a double and bitwise ops are defined only on the low
+    // 32 bits, so `physical >> 40` silently yields garbage for any real
+    // millisecond timestamp (which needs 41 bits).
+    final hi = physical ~/ 0x1000000; // top 24 bits
+    final lo = physical % 0x1000000; // bottom 24 bits
+    out[offset] = (hi >> 16) & 0xFF;
+    out[offset + 1] = (hi >> 8) & 0xFF;
+    out[offset + 2] = hi & 0xFF;
+    out[offset + 3] = (lo >> 16) & 0xFF;
+    out[offset + 4] = (lo >> 8) & 0xFF;
+    out[offset + 5] = lo & 0xFF;
     out[offset + 6] = (counter >> 8) & 0xFF;
     out[offset + 7] = counter & 0xFF;
     out[offset + 8] = (deviceId >> 24) & 0xFF;
@@ -82,13 +89,13 @@ class Hlc implements Comparable<Hlc> {
   }
 
   static Hlc readFrom(Uint8List src, int offset) {
-    final physical =
-        (src[offset] << 40) |
-        (src[offset + 1] << 32) |
-        (src[offset + 2] << 24) |
-        (src[offset + 3] << 16) |
-        (src[offset + 4] << 8) |
-        src[offset + 5];
+    // Reassemble the two 24-bit halves with multiplication, for the same
+    // reason writeTo splits them: shifts past bit 31 are not portable.
+    final hi =
+        (src[offset] << 16) | (src[offset + 1] << 8) | src[offset + 2];
+    final lo =
+        (src[offset + 3] << 16) | (src[offset + 4] << 8) | src[offset + 5];
+    final physical = hi * 0x1000000 + lo;
     final counter = (src[offset + 6] << 8) | src[offset + 7];
     final deviceId =
         ((src[offset + 8] << 24) |

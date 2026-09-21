@@ -58,19 +58,27 @@ class ByteWriter {
 
   /// LEB128 unsigned varint. Values below 128 cost a single byte, which is
   /// the common case for lengths, counts and indices.
+  ///
+  /// Uses division rather than `>>= 7` so values above 2^32 survive on
+  /// dart2js, where bitwise operators truncate to 32 bits.
   void varint(int v) {
     if (v < 0) {
       throw ArgumentError('varint requires non-negative, got $v');
     }
     while (v >= 0x80) {
-      u8((v & 0x7F) | 0x80);
-      v >>= 7;
+      u8((v % 0x80) | 0x80);
+      v = v ~/ 0x80;
     }
     u8(v);
   }
 
   /// Zigzag-encoded signed varint: small magnitudes stay small either sign.
-  void svarint(int v) => varint((v << 1) ^ (v >> 63));
+  ///
+  /// Written arithmetically rather than as `(v << 1) ^ (v >> 63)`: on
+  /// dart2js ints are doubles and bitwise operators only cover the low 32
+  /// bits, so the shift-based form corrupts any value beyond 32 bits —
+  /// which includes every millisecond timestamp we store.
+  void svarint(int v) => varint(v < 0 ? (-v * 2) - 1 : v * 2);
 
   void bytes(Uint8List src) {
     _ensure(src.length);
@@ -163,16 +171,19 @@ class ByteReader {
         0xFFFFFFFF;
   }
 
+  /// Mirrors [ByteWriter.varint]; accumulates by multiplication so values
+  /// wider than 32 bits decode correctly on dart2js.
   int varint() {
     var result = 0;
-    var shift = 0;
+    var scale = 1;
+    var bytes = 0;
     while (true) {
       _need(1);
       final b = buf[_pos++];
-      result |= (b & 0x7F) << shift;
+      result += (b & 0x7F) * scale;
       if (b < 0x80) return result;
-      shift += 7;
-      if (shift > 63) {
+      scale *= 0x80;
+      if (++bytes > 8) {
         throw CorruptDataException('varint too long', _pos);
       }
     }
@@ -180,7 +191,7 @@ class ByteReader {
 
   int svarint() {
     final v = varint();
-    return (v >> 1) ^ -(v & 1);
+    return v.isOdd ? -((v + 1) ~/ 2) : v ~/ 2;
   }
 
   Uint8List bytesView(int n) {

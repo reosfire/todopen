@@ -129,6 +129,10 @@ class SyncEngine {
   }) : replica = replica ?? Replica();
 
   int get pendingOpCount => _pending.length;
+
+  /// Ops queued for the next push, so the caller can persist them and
+  /// survive a crash before the upload lands.
+  List<Op> get pendingOps => List<Op>.unmodifiable(_pending);
   Manifest? get lastManifest => _manifest;
 
   /// Record a locally originated op: apply it immediately for a responsive
@@ -161,21 +165,54 @@ class SyncEngine {
 
   /// Map a uuid to a shard bucket.
   ///
-  /// Uses an avalanche mix (SplitMix64's finaliser) rather than taking the
-  /// value modulo the shard count directly. A plain modulo depends only on
-  /// the low bits, so any id source whose trailing bytes are patterned —
-  /// sequential ids, or anything not a true random v4 — collapses every
-  /// entity into a single shard and silently defeats the sharding.
-  int _shardOfUuid(Uuid128 id) {
-    var z = (id.high.toInt() ^ id.low.toInt()) & _mask64;
-    z = (z ^ (z >>> 30)) * 0xBF58476D1CE4E5B9;
-    z = (z ^ (z >>> 27)) * 0x94D049BB133111EB;
-    z = z ^ (z >>> 31);
-    return (z & _mask63) % policy.shardCount;
+  /// Avalanches the id before taking it modulo the shard count. A plain
+  /// modulo depends only on the low bits, so any id source whose trailing
+  /// bytes are patterned — sequential ids, or anything not a true random
+  /// v4 — collapses every entity into one shard and defeats the sharding.
+  ///
+  /// Deliberately 32-bit throughout: this app also runs on the web, where
+  /// Dart ints are JavaScript doubles and 64-bit constants cannot be
+  /// represented. A 64-bit mix would give different shard assignments on
+  /// web and native and split one dataset across two layouts.
+  int _shardOfUuid(Uuid128 id) => shardOfUuid(id, policy.shardCount);
+
+  /// Exposed so the migration tool can reproduce the identical assignment.
+  static int shardOfUuid(Uuid128 id, int shardCount) {
+    final hi = id.high.toInt();
+    final lo = id.low.toInt();
+    // Fold all 128 bits into 32, then avalanche with murmur3's finaliser.
+    var h = _mix32(hi & 0xFFFFFFFF);
+    h = _mix32(h ^ ((hi >> 32) & 0xFFFFFFFF));
+    h = _mix32(h ^ (lo & 0xFFFFFFFF));
+    h = _mix32(h ^ ((lo >> 32) & 0xFFFFFFFF));
+    return h % shardCount;
   }
 
-  static const _mask64 = 0xFFFFFFFFFFFFFFFF;
-  static const _mask63 = 0x7FFFFFFFFFFFFFFF;
+  /// murmur3 fmix32.
+  static int _mix32(int x) {
+    var h = x & 0xFFFFFFFF;
+    h ^= h >>> 16;
+    h = _mul32(h, 0x85EBCA6B);
+    h ^= h >>> 13;
+    h = _mul32(h, 0xC2B2AE35);
+    h ^= h >>> 16;
+    return h;
+  }
+
+  /// 32×32 → low 32 bits, computed in 16-bit halves.
+  ///
+  /// A direct `a * b & 0xFFFFFFFF` overflows 2^53 for large operands, and on
+  /// dart2js (where ints are doubles) the low bits are then silently wrong —
+  /// giving a different shard on web than on native for the same id, which
+  /// would tear one dataset across two incompatible layouts.
+  static int _mul32(int a, int b) {
+    final aLo = a & 0xFFFF;
+    final aHi = (a >>> 16) & 0xFFFF;
+    // aHi * bLo only needs its low 16 bits; they land in the high half.
+    return (((aHi * (b & 0xFFFF) + aLo * ((b >>> 16) & 0xFFFF)) << 16) +
+            aLo * (b & 0xFFFF)) &
+        0xFFFFFFFF;
+  }
 
   // ───────────────────────── Sync ─────────────────────────
 
@@ -553,6 +590,41 @@ class SyncEngine {
       bytesDown: head.bytes.length + stats.bytes,
       requests: 1 + stats.requests,
     );
+  }
+
+  /// Snapshot of what has been merged, for persisting across restarts.
+  ({int baseGen, Map<int, String> chunks, Set<String> segments})
+  exportProgress() => (
+    baseGen: _loadedBaseGen,
+    chunks: Map<int, String>.from(_loadedChunks),
+    segments: Set<String>.from(_appliedSegments),
+  );
+
+  /// Restore merge progress saved by [exportProgress].
+  ///
+  /// Without this a restart would re-download and re-apply the whole log.
+  /// Re-applying is harmless (ops are idempotent) but wastes bandwidth on
+  /// every launch.
+  void restoreProgress({
+    required int baseGen,
+    required Map<int, String> chunks,
+    required Set<String> segments,
+  }) {
+    _loadedBaseGen = baseGen;
+    _loadedChunks
+      ..clear()
+      ..addAll(chunks);
+    _appliedSegments
+      ..clear()
+      ..addAll(segments);
+  }
+
+  /// Seed the pending queue from ops that were persisted while offline.
+  ///
+  /// They are already reflected in the restored replica, so they are queued
+  /// for upload without being re-applied.
+  void restorePending(List<Op> ops) {
+    _pending.addAll(ops);
   }
 
   /// Estimated cost of a cold start, for the settings screen.

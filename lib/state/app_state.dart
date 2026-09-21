@@ -1,66 +1,161 @@
-import 'package:flutter/material.dart';
+import 'dart:async';
+
 import 'package:app_links/app_links.dart';
-import '../models/app_data.dart';
+import 'package:flutter/material.dart';
+
+import '../models/folder.dart';
+import '../models/smart_list.dart';
+import '../models/tag.dart';
 import '../models/task.dart';
 import '../models/task_list.dart';
-import '../models/folder.dart';
-import '../models/tag.dart';
-import '../models/smart_list.dart';
-import '../services/storage_service.dart';
 import '../services/dropbox_service.dart';
-import '../services/sync_service.dart';
-import '../services/proto_serializer.dart';
+import '../sync/domain_mapper.dart';
+import '../sync/dropbox_store.dart';
+import '../sync/engine/replica.dart';
+import '../sync/engine/sync_engine.dart';
+import '../sync/local_store.dart';
+import '../sync/model/hlc.dart';
+import '../sync/model/ops.dart';
 import '../utils/uuid128.dart';
 
+/// Application state backed by the CRDT sync engine.
+///
+/// Every mutation becomes one or more [Op]s, which are applied locally for an
+/// immediate UI update and queued for the next push. Reads project the
+/// replica into the app's domain models, cached so a rebuild does not
+/// re-decode the world.
 class AppState extends ChangeNotifier with WidgetsBindingObserver {
-  final StorageService _storage = StorageService();
   final DropboxService dropboxService = DropboxService();
-  late final SyncService _syncService = SyncService(dropboxService, _storage);
+  final LocalStore _local = LocalStore();
   final _appLinks = AppLinks();
 
-  AppData _data = AppData();
+  late SyncEngine _engine;
+  late HlcClock _clock;
+
   bool _loading = true;
   bool _syncing = false;
+  bool _initialised = false;
+
+  /// Debounce so a burst of edits becomes one segment upload.
+  Timer? _pushTimer;
+  static const _pushDebounce = Duration(milliseconds: 600);
+
+  /// Serialises sync cycles; two overlapping syncs would fight over the CAS.
+  Future<void> _syncChain = Future.value();
+
+  Timer? _pollTimer;
+  bool _polling = false;
+  String? _longpollCursor;
 
   bool get loading => _loading;
   bool get syncing => _syncing;
   bool get isSignedIn => dropboxService.isSignedIn;
 
-  List<Task> get tasks => _data.tasks;
-  List<TaskList> get lists => _data.lists;
-  List<Folder> get folders => _data.folders;
-  List<Tag> get tags => _data.tags;
-  List<SmartList> get smartLists => _data.smartLists;
+  /// Ops made locally but not yet accepted by the server.
+  int get pendingChanges => _initialised ? _engine.pendingOpCount : 0;
 
-  // ───── Initialization ─────
+  // ───── Projection cache ─────
+  //
+  // The replica is the source of truth, but the UI asks for these lists on
+  // every build. Rebuilding them is O(entities), so they are cached and
+  // invalidated whenever the replica changes.
+
+  List<Task>? _tasksCache;
+  List<TaskList>? _listsCache;
+  List<Folder>? _foldersCache;
+  List<Tag>? _tagsCache;
+  List<SmartList>? _smartListsCache;
+
+  void _invalidate() {
+    _tasksCache = null;
+    _listsCache = null;
+    _foldersCache = null;
+    _tagsCache = null;
+    _smartListsCache = null;
+  }
+
+  Replica get _replica => _engine.replica;
+
+  List<Task> get tasks => _tasksCache ??= DomainMapper.allTasks(_replica);
+
+  List<TaskList> get lists =>
+      _listsCache ??= DomainMapper.allLists(_replica)
+        ..sort(_bySidebarOrder);
+
+  List<Folder> get folders =>
+      _foldersCache ??= DomainMapper.allFolders(_replica)
+        ..sort(_bySidebarOrder);
+
+  List<Tag> get tags => _tagsCache ??= DomainMapper.allTags(_replica);
+
+  List<SmartList> get smartLists =>
+      _smartListsCache ??= DomainMapper.allSmartLists(_replica);
+
+  /// Lists and folders share one ordering array, so both sort by their
+  /// position in it.
+  int _bySidebarOrder(Object a, Object b) {
+    final order = _replica.orders[DomainMapper.sidebarScope]?.value ?? const [];
+    final ia = order.indexOf(_idOf(a));
+    final ib = order.indexOf(_idOf(b));
+    if (ia == ib) return 0;
+    // Anything absent from the array sorts last, deterministically.
+    if (ia < 0) return 1;
+    if (ib < 0) return -1;
+    return ia.compareTo(ib);
+  }
+
+  static Uuid128 _idOf(Object o) => switch (o) {
+    TaskList(:final id) => id,
+    Folder(:final id) => id,
+    _ => throw ArgumentError('not a sidebar item: $o'),
+  };
+
+  // ───── Initialisation ─────
 
   Future<void> init() async {
-    _data = await _storage.load();
+    final deviceId = await _local.deviceId();
+    final savedState = await _local.loadSyncState();
+
+    _clock = HlcClock(deviceId: deviceId);
+    // Resume from the highest timestamp this device ever issued or saw, so
+    // restarting cannot produce an op that sorts before earlier work.
+    _clock.observe(savedState.lastHlc);
+
+    final replica = await _local.loadReplica();
+    _engine = SyncEngine(
+      store: DropboxStore(dropboxService),
+      clock: _clock,
+      deviceId: deviceId,
+      replica: replica,
+    );
+    _engine.restoreProgress(
+      baseGen: savedState.baseGen,
+      chunks: savedState.loadedChunks,
+      segments: savedState.appliedSegments,
+    );
+    _engine.restorePending(await _local.loadPending());
+
+    _initialised = true;
+    _invalidate();
     _ensureDefaults();
     _loading = false;
     notifyListeners();
 
-    // Initialise Dropbox (loads saved tokens and handles web OAuth redirect).
     await dropboxService.init();
-    await _syncService.init(_data);
-
     _initDeepLinks();
-
-    _syncService.onRemoteDataChanged = _onRemoteDataPulled;
-
-    // Register lifecycle observer so we pause/resume polling.
     WidgetsBinding.instance.addObserver(this);
 
     if (dropboxService.isSignedIn) {
-      _pullAndStartPolling();
+      unawaited(_syncNow());
+      _startPolling();
     }
-
     notifyListeners();
   }
 
   @override
   void dispose() {
-    _syncService.stopRemotePolling();
+    _stopPolling();
+    _pushTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -68,744 +163,556 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      // App came back to foreground – pull changes and restart polling.
       if (dropboxService.isSignedIn) {
-        _pullAndStartPolling();
+        unawaited(_syncNow());
+        _startPolling();
       }
     } else if (state == AppLifecycleState.paused) {
-      // App went to background – stop the longpoll loop.
-      _syncService.stopRemotePolling();
-    }
-  }
-
-  /// Pull remote changes and (re)start the longpoll loop.
-  Future<void> _pullAndStartPolling() async {
-    try {
-      final changed = await _syncService.pullRemoteChanges(_data);
-      if (changed) {
-        _ensureDefaults();
-        notifyListeners();
-        await _storage.save(_data);
-      }
-    } catch (e) {
-      debugPrint('Pull error: $e');
-    }
-    _syncService.startRemotePolling(() => _data);
-  }
-
-  /// Called by SyncService when the longpoll loop detected and pulled changes.
-  Future<void> _onRemoteDataPulled(AppData data) async {
-    _data = data;
-    _ensureDefaults();
-    notifyListeners();
-    await _storage.save(_data);
-  }
-
-  void _initDeepLinks() async {
-    // Handle initial link (when app was closed and opened via deep link)
-    try {
-      final initialUri = await _appLinks.getInitialLink();
-      if (initialUri != null) {
-        _handleIncomingLink(initialUri);
-      }
-    } catch (e) {
-      // Handle error silently
-    }
-
-    // Listen for new links while app is running
-    _appLinks.uriLinkStream.listen((uri) {
-      _handleIncomingLink(uri);
-    });
-  }
-
-  void _handleIncomingLink(Uri uri) async {
-    if (uri.scheme == 'todopen' && uri.host == 'auth') {
-      final code = uri.queryParameters['code'];
-      if (code != null) {
-        final success = await dropboxService.handleRedirectCode(code);
-        if (success) {
-          notifyListeners();
-          await sync();
-          _syncService.startRemotePolling(() => _data);
-        }
-      }
+      _stopPolling();
+      // Flush anything buffered before the OS can freeze or kill us.
+      unawaited(_flushNow());
     }
   }
 
   void _ensureDefaults() {
-    if (_data.lists.isEmpty) {
-      _data.lists.add(TaskList(id: Uuid128.generateV4(), name: 'Inbox', order: 0));
+    if (DomainMapper.allLists(_replica).isEmpty) {
+      final inbox = TaskList(id: Uuid128.generateV4(), name: 'Inbox');
+      _record(DomainMapper.createList(inbox, _clock));
     }
   }
 
-  Future<void> _save() async {
-    _data.lastModified = DateTime.now();
+  // ───── Mutation plumbing ─────
+
+  /// Apply ops locally, persist, and schedule a push.
+  void _record(List<Op> ops) {
+    if (ops.isEmpty) return;
+    _engine.recordAll(ops);
+    _invalidate();
     notifyListeners();
-    await _storage.save(_data);
+    unawaited(_persistLocal());
+    _schedulePush();
+  }
+
+  Future<void> _persistLocal() async {
+    try {
+      await _local.saveReplica(_replica);
+      await _local.savePending(_pendingOps(), _engine.deviceId);
+    } catch (e) {
+      debugPrint('Local persist failed: $e');
+    }
+  }
+
+  /// The engine owns the pending list; this mirrors it for persistence.
+  List<Op> _pendingOps() => _engine.pendingOps;
+
+  void _schedulePush() {
+    if (!dropboxService.isSignedIn) return;
+    _pushTimer?.cancel();
+    _pushTimer = Timer(_pushDebounce, () => unawaited(_syncNow()));
+  }
+
+  Future<void> _flushNow() async {
+    _pushTimer?.cancel();
+    if (!dropboxService.isSignedIn) return;
+    await _syncNow();
+  }
+
+  /// Run a sync cycle, serialised against any other in flight.
+  Future<void> _syncNow({bool showSpinner = false}) {
+    final next = _syncChain.then((_) async {
+      if (!dropboxService.isSignedIn) return;
+      if (showSpinner) {
+        _syncing = true;
+        notifyListeners();
+      }
+      try {
+        final report = await _engine.sync();
+        if (report.opsPulled > 0 || report.opsPushed > 0 || report.compacted) {
+          _invalidate();
+          _ensureDefaults();
+          notifyListeners();
+        }
+        await _persistLocal();
+        await _saveSyncState();
+      } catch (e) {
+        debugPrint('Sync failed: $e');
+      } finally {
+        if (showSpinner) {
+          _syncing = false;
+          notifyListeners();
+        }
+      }
+    });
+    // Keep the chain alive even if this link threw.
+    _syncChain = next.catchError((Object e) {
+      debugPrint('Sync chain error: $e');
+    });
+    return next;
+  }
+
+  Future<void> _saveSyncState() async {
+    final p = _engine.exportProgress();
+    await _local.saveSyncState(
+      SyncState(
+        baseGen: p.baseGen,
+        loadedChunks: p.chunks,
+        appliedSegments: p.segments,
+        lastHlc: _replica.maxHlc,
+      ),
+    );
   }
 
   // ───── Tasks ─────
 
-  List<Task> tasksForList(Uuid128 listId) =>
-      _data.tasks.where((t) => t.listId == listId).toList();
+  Task? taskById(Uuid128 id) {
+    final e = _replica.get(EntityKind.task, id);
+    return e == null ? null : DomainMapper.taskFrom(e);
+  }
 
-  /// Get tasks for a list in their linked-list order.
-  /// [completedSection] determines whether to return completed or pending tasks.
+  List<Task> tasksForList(Uuid128 listId) =>
+      tasks.where((t) => t.listId == listId).toList();
+
+  /// Tasks of one list in their stored order.
+  ///
+  /// Order comes from the dense array for the (list, lane) scope; membership
+  /// comes from the tasks themselves, so a task can never be orphaned by a
+  /// stale ordering entry.
   List<Task> tasksForListOrdered(
     Uuid128 listId, {
     required bool completedSection,
   }) {
-    final allTasks = tasksForList(
+    final members = <Uuid128, Task>{
+      for (final t in tasks)
+        if (t.listId == listId && t.isCompleted == completedSection) t.id: t,
+    };
+    if (members.isEmpty) return const [];
+
+    final scope = DomainMapper.taskScope(
       listId,
-    ).where((t) => t.isCompleted == completedSection).toList();
-
-    if (allTasks.isEmpty) return [];
-
-    // Build a map for quick lookup.
-    final taskMap = {for (var t in allTasks) t.id: t};
-
-    // Find the head (first task with no previous).
-    Task? head;
-    for (var task in allTasks) {
-      if (task.previousTaskId == null ||
-          !taskMap.containsKey(task.previousTaskId)) {
-        head = task;
-        break;
-      }
-    }
-
-    // If no clear head found (e.g., cycle or orphaned tasks), fall back to creation time.
-    if (head == null) {
-      return allTasks..sort((a, b) => b.createdAt.compareTo(a.createdAt));
-    }
-
-    // Traverse the linked list from head.
-    final ordered = <Task>[];
-    Task? current = head;
-    final visited = <Uuid128>{};
-
-    while (current != null && !visited.contains(current.id)) {
-      ordered.add(current);
-      visited.add(current.id);
-
-      final nextId = current.nextTaskId;
-      if (nextId == null || !taskMap.containsKey(nextId)) break;
-      current = taskMap[nextId]!;
-    }
-
-    // Include any orphaned tasks at the end (tasks not in the chain).
-    for (var task in allTasks) {
-      if (!visited.contains(task.id)) {
-        ordered.add(task);
-      }
-    }
-
-    return ordered;
-  }
-
-  /// Rebuild the linked list for a set of tasks based on their order in the list.
-  /// This is simpler than trying to surgically update pointers during reorder.
-  Future<void> rebuildLinkedListForTasks(List<Task> orderedTasks) async {
-    if (orderedTasks.isEmpty) return;
-
-    final updates = <Task>[];
-
-    for (var i = 0; i < orderedTasks.length; i++) {
-      final task = orderedTasks[i];
-      final prevId = i > 0 ? orderedTasks[i - 1].id : null;
-      final nextId = i < orderedTasks.length - 1
-          ? orderedTasks[i + 1].id
-          : null;
-
-      // Only update if the pointers actually changed
-      if (task.previousTaskId != prevId || task.nextTaskId != nextId) {
-        updates.add(copyTask(task, previousTaskId: prevId, nextTaskId: nextId));
-      }
-    }
-
-    if (updates.isNotEmpty) {
-      await updateTasks(updates);
-    }
-  }
-
-  /// Reorder a task by updating its position in the linked list.
-  /// [task] is the task to move.
-  /// [newPrevious] is the task that should come before it (null = move to head).
-  /// [newNext] is the task that should come after it (null = move to tail).
-  Future<void> reorderTask(Task task, Task? newPrevious, Task? newNext) async {
-    // Track which tasks need updates and what their new links should be.
-    final taskUpdates = <Uuid128, ({Uuid128? prev, Uuid128? next})>{};
-
-    // 1. Remove task from its current position.
-    final oldPrev = task.previousTaskId != null
-        ? taskById(task.previousTaskId!)
-        : null;
-    final oldNext = task.nextTaskId != null ? taskById(task.nextTaskId!) : null;
-
-    // Unlink old neighbors from the moved task.
-    if (oldPrev != null) {
-      taskUpdates[oldPrev.id] = (
-        prev: oldPrev.previousTaskId,
-        next: oldNext?.id,
-      );
-    }
-    if (oldNext != null) {
-      taskUpdates[oldNext.id] = (prev: oldPrev?.id, next: oldNext.nextTaskId);
-    }
-
-    // 2. Insert task at new position.
-    taskUpdates[task.id] = (prev: newPrevious?.id, next: newNext?.id);
-
-    // Link new neighbors to the moved task.
-    if (newPrevious != null) {
-      // If newPrevious was already updated (e.g., it was oldNext), merge the updates.
-      final existing = taskUpdates[newPrevious.id];
-      taskUpdates[newPrevious.id] = (
-        prev: existing?.prev ?? newPrevious.previousTaskId,
-        next: task.id,
-      );
-    }
-    if (newNext != null) {
-      final existing = taskUpdates[newNext.id];
-      taskUpdates[newNext.id] = (
-        prev: task.id,
-        next: existing?.next ?? newNext.nextTaskId,
-      );
-    }
-
-    // Build final task updates from the map.
-    final updates = <Task>[];
-    for (final entry in taskUpdates.entries) {
-      final originalTask = taskById(entry.key);
-      if (originalTask == null) continue;
-
-      updates.add(
-        copyTask(
-          originalTask,
-          previousTaskId: entry.value.prev,
-          nextTaskId: entry.value.next,
-        ),
-      );
-    }
-
-    await updateTasks(updates);
-  }
-
-  /// Helper to create a copy of a task with updated link pointers.
-  Task copyTask(
-    Task task, {
-    required Uuid128? previousTaskId,
-    required Uuid128? nextTaskId,
-  }) {
-    return Task(
-      id: task.id,
-      title: task.title,
-      notes: task.notes,
-      isCompleted: task.isCompleted,
-      createdAt: task.createdAt,
-      scheduledDate: task.scheduledDate,
-      recurrence: task.recurrence,
-      tagIds: task.tagIds,
-      listId: task.listId,
-      previousTaskId: previousTaskId,
-      nextTaskId: nextTaskId,
-      completedDates: task.completedDates,
+      completed: completedSection,
     );
+    final ordered = _replica.orderedIds(scope, members.keys.toSet());
+    return [
+      for (final id in ordered)
+        if (members[id] case final t?) t,
+    ];
   }
 
-  /// Add a new task to the head of its list's linked list chain.
-  /// This atomically adds the task and updates the old head if there is one.
-  Future<void> addTaskAsHead(Task newTask) async {
-    // Find the current head before inserting, and link the new task to it
-    // here rather than relying on the caller having set the pointer.
-    final pendingTasks = tasksForListOrdered(
-      newTask.listId,
-      completedSection: newTask.isCompleted,
+  Uuid128 newId() => Uuid128.generateV4();
+
+  /// Add a task at the top of its list.
+  Future<void> addTaskAsHead(Task task) async {
+    final scope = DomainMapper.taskScope(
+      task.listId,
+      completed: task.isCompleted,
     );
-    final oldHead = pendingTasks.isNotEmpty ? pendingTasks.first : null;
+    final current = tasksForListOrdered(
+      task.listId,
+      completedSection: task.isCompleted,
+    ).map((t) => t.id).toList();
 
-    newTask.previousTaskId = null;
-    newTask.nextTaskId = oldHead?.id;
-
-    final updates = <Task>[newTask];
-
-    if (oldHead != null) {
-      updates.add(
-        copyTask(
-          oldHead,
-          previousTaskId: newTask.id,
-          nextTaskId: oldHead.nextTaskId, // Preserve the old next link
-        ),
-      );
-    }
-
-    // Add to internal list and batch save/sync.
-    _data.tasks.add(newTask);
-    for (final task in updates.skip(1)) {
-      final i = _data.tasks.indexWhere((t) => t.id == task.id);
-      if (i >= 0) _data.tasks[i] = task;
-    }
-
-    await _save();
-
-    for (final task in updates) {
-      _syncService.pushEntity(
-        'tasks',
-        task.id.toString(),
-        ProtoSerializer.taskToBytes(task),
-      );
-    }
+    _record([
+      ...DomainMapper.createTask(task, _clock),
+      // One move op rather than rewriting neighbours: this is the whole
+      // reason the linked list is gone.
+      MoveWithinOrderOp(_clock.issue(), scope, task.id, null),
+      if (current.isEmpty)
+        SetOrderOp(_clock.issue(), scope, [task.id]),
+    ]);
   }
 
-  Task? taskById(Uuid128 id) {
-    try {
-      return _data.tasks.firstWhere((t) => t.id == id);
-    } catch (_) {
-      return null;
-    }
-  }
-
-  Future<void> addTask(Task task) async {
-    _data.tasks.add(task);
-    await _save();
-    _syncService.pushEntity(
-      'tasks',
-      task.id.toString(),
-      ProtoSerializer.taskToBytes(task),
-    );
-  }
+  Future<void> addTask(Task task) async => addTaskAsHead(task);
 
   Future<void> updateTask(Task task) async {
-    final i = _data.tasks.indexWhere((t) => t.id == task.id);
-    if (i >= 0) _data.tasks[i] = task;
-    await _save();
-    _syncService.pushEntity(
-      'tasks',
-      task.id.toString(),
-      ProtoSerializer.taskToBytes(task),
-    );
+    _record(DomainMapper.updateTask(task, taskById(task.id), _clock));
   }
 
-  Future<void> updateTasks(List<Task> tasks) async {
-    for (final task in tasks) {
-      final i = _data.tasks.indexWhere((t) => t.id == task.id);
-      if (i >= 0) _data.tasks[i] = task;
+  Future<void> updateTasks(List<Task> updated) async {
+    final ops = <Op>[];
+    for (final t in updated) {
+      ops.addAll(DomainMapper.updateTask(t, taskById(t.id), _clock));
     }
-    await _save();
-    for (final task in tasks) {
-      _syncService.pushEntity(
-        'tasks',
-        task.id.toString(),
-        ProtoSerializer.taskToBytes(task),
-      );
-    }
+    _record(ops);
   }
 
   Future<void> deleteTask(Uuid128 id) async {
-    _data.tasks.removeWhere((t) => t.id == id);
-    await _save();
-    _syncService.pushDeletion('tasks', id.toString());
+    _record([DeleteEntityOp(_clock.issue(), EntityKind.task, id)]);
   }
 
   Future<void> toggleTask(Task task, {DateTime? onDate}) async {
     if (task.recurrence != null && onDate != null) {
-      final d = DateTime(onDate.year, onDate.month, onDate.day);
-      if (task.isCompletedOn(d)) {
-        task.completedDates.removeWhere(
-          (c) => c.year == d.year && c.month == d.month && c.day == d.day,
+      // Recurring tasks record per-date completion instead of a flag.
+      final day = DateTime(onDate.year, onDate.month, onDate.day);
+      final dates = Set<DateTime>.from(task.completedDates);
+      if (task.isCompletedOn(day)) {
+        dates.removeWhere(
+          (d) => d.year == day.year && d.month == day.month && d.day == day.day,
         );
       } else {
-        task.completedDates.add(d);
+        dates.add(day);
       }
-      await _save();
-      _syncService.pushEntity(
-        'tasks',
-        task.id.toString(),
-        ProtoSerializer.taskToBytes(task),
-      );
-    } else {
-      // For non-recurring tasks, toggle moves the task between sections.
-      // We need to properly move it in the linked list.
-      await _toggleTaskWithReorder(task);
-    }
-  }
-
-  /// Toggle a task's completion status and move it to the head of the new section.
-  Future<void> _toggleTaskWithReorder(Task task) async {
-    final updates = <Task>[];
-
-    // 1. Remove task from its current section's linked list.
-    final oldPrev = task.previousTaskId != null
-        ? taskById(task.previousTaskId!)
-        : null;
-    final oldNext = task.nextTaskId != null ? taskById(task.nextTaskId!) : null;
-
-    if (oldPrev != null) {
-      updates.add(
-        copyTask(
-          oldPrev,
-          previousTaskId: oldPrev.previousTaskId,
-          nextTaskId: oldNext?.id,
+      _record([
+        SetFieldOp(
+          _clock.issue(),
+          EntityKind.task,
+          task.id,
+          TaskField.completedDates,
+          DateSetValue(dates.map(DomainMapper.toDays).toSet()),
         ),
-      );
-    }
-    if (oldNext != null) {
-      updates.add(
-        copyTask(
-          oldNext,
-          previousTaskId: oldPrev?.id,
-          nextTaskId: oldNext.nextTaskId,
-        ),
-      );
+      ]);
+      return;
     }
 
-    // 2. Toggle completion status.
-    final newCompletedStatus = !task.isCompleted;
-
-    // 3. Find the head of the new section.
-    final newSectionTasks = tasksForListOrdered(
+    // Toggling moves the task between the pending and completed lanes.
+    final nowCompleted = !task.isCompleted;
+    final targetScope = DomainMapper.taskScope(
       task.listId,
-      completedSection: newCompletedStatus,
+      completed: nowCompleted,
     );
-    final newSectionHead = newSectionTasks.isNotEmpty
-        ? newSectionTasks.first
-        : null;
-
-    // 4. Insert task at the head of the new section.
-    final updatedTask = copyTask(
-      task,
-      previousTaskId: null,
-      nextTaskId: newSectionHead?.id,
-    );
-    updatedTask.isCompleted = newCompletedStatus;
-    updates.add(updatedTask);
-
-    // 5. Update the old head of the new section to point back.
-    if (newSectionHead != null) {
-      updates.add(
-        copyTask(
-          newSectionHead,
-          previousTaskId: task.id,
-          nextTaskId: newSectionHead.nextTaskId,
-        ),
-      );
-    }
-
-    // Apply all updates atomically.
-    for (final update in updates) {
-      final i = _data.tasks.indexWhere((t) => t.id == update.id);
-      if (i >= 0) _data.tasks[i] = update;
-    }
-
-    await _save();
-
-    for (final update in updates) {
-      _syncService.pushEntity(
-        'tasks',
-        update.id.toString().toString(),
-        ProtoSerializer.taskToBytes(update),
-      );
-    }
+    _record([
+      SetFieldOp(
+        _clock.issue(),
+        EntityKind.task,
+        task.id,
+        TaskField.isCompleted,
+        BoolValue(nowCompleted),
+      ),
+      MoveWithinOrderOp(_clock.issue(), targetScope, task.id, null),
+    ]);
   }
+
+  /// Persist an explicit ordering for one section of a list.
+  Future<void> rebuildLinkedListForTasks(List<Task> orderedTasks) async {
+    if (orderedTasks.isEmpty) return;
+    final first = orderedTasks.first;
+    final scope = DomainMapper.taskScope(
+      first.listId,
+      completed: first.isCompleted,
+    );
+    _record([
+      SetOrderOp(
+        _clock.issue(),
+        scope,
+        orderedTasks.map((t) => t.id).toList(),
+      ),
+    ]);
+  }
+
+  /// Move [task] to sit between [newPrevious] and [newNext].
+  Future<void> reorderTask(Task task, Task? newPrevious, Task? newNext) async {
+    final scope = DomainMapper.taskScope(
+      task.listId,
+      completed: task.isCompleted,
+    );
+    _record([
+      MoveWithinOrderOp(_clock.issue(), scope, task.id, newPrevious?.id),
+    ]);
+  }
+
+  /// Kept for source compatibility with the previous linked-list API.
+  Task copyTask(
+    Task task, {
+    required Uuid128? previousTaskId,
+    required Uuid128? nextTaskId,
+  }) => task;
 
   // ───── Lists ─────
 
   TaskList? listById(Uuid128 id) {
-    try {
-      return _data.lists.firstWhere((l) => l.id == id);
-    } catch (_) {
-      return null;
-    }
+    final e = _replica.get(EntityKind.list, id);
+    return e == null ? null : DomainMapper.listFrom(e);
   }
 
   Future<void> addList(TaskList list) async {
-    _data.lists.add(list);
-    await _save();
-    _syncService.pushEntity(
-      'lists',
-      list.id.toString(),
-      ProtoSerializer.listToBytes(list),
-    );
+    final order = [...lists.map((l) => l.id), ...folders.map((f) => f.id)];
+    _record([
+      ...DomainMapper.createList(list, _clock),
+      SetOrderOp(_clock.issue(), DomainMapper.sidebarScope, [
+        ...order,
+        list.id,
+      ]),
+    ]);
   }
 
   Future<void> updateList(TaskList list) async {
-    final i = _data.lists.indexWhere((l) => l.id == list.id);
-    if (i >= 0) _data.lists[i] = list;
-    await _save();
-    _syncService.pushEntity(
-      'lists',
-      list.id.toString(),
-      ProtoSerializer.listToBytes(list),
-    );
+    _record(DomainMapper.updateList(list, listById(list.id), _clock));
   }
 
   Future<void> deleteList(Uuid128 id) async {
-    final taskIds = _data.tasks
-        .where((t) => t.listId == id)
-        .map((t) => t.id)
-        .toList();
-    _data.lists.removeWhere((l) => l.id == id);
-    _data.tasks.removeWhere((t) => t.listId == id);
-    await _save();
-    _syncService.pushDeletion('lists', id.toString());
-    for (final tid in taskIds) {
-      _syncService.pushDeletion('tasks', tid.toString());
+    final ops = <Op>[DeleteEntityOp(_clock.issue(), EntityKind.list, id)];
+    for (final t in tasks.where((t) => t.listId == id)) {
+      ops.add(DeleteEntityOp(_clock.issue(), EntityKind.task, t.id));
     }
+    _record(ops);
   }
 
-  Future<void> reorderLists(List<TaskList> reorderedLists) async {
-    for (var i = 0; i < reorderedLists.length; i++) {
-      reorderedLists[i].order = i;
-      final idx = _data.lists.indexWhere((l) => l.id == reorderedLists[i].id);
-      if (idx >= 0) _data.lists[idx] = reorderedLists[i];
+  Future<void> reorderLists(List<TaskList> reordered) async {
+    // Lists inside a folder are a subsequence of the shared sidebar order;
+    // splice them back into their existing slots so folders stay put.
+    final current = _sidebarOrder();
+    final moving = reordered.map((l) => l.id).toList();
+    final slots = <int>[
+      for (var i = 0; i < current.length; i++)
+        if (moving.contains(current[i])) i,
+    ];
+    final next = List<Uuid128>.from(current);
+    for (var i = 0; i < slots.length && i < moving.length; i++) {
+      next[slots[i]] = moving[i];
     }
-    await _save();
-    for (final list in reorderedLists) {
-      _syncService.pushEntity(
-        'lists',
-        list.id.toString(),
-        ProtoSerializer.listToBytes(list),
-      );
-    }
+    _record([SetOrderOp(_clock.issue(), DomainMapper.sidebarScope, next)]);
+  }
+
+  /// Reorder a mixed sequence of lists and folders.
+  Future<void> reorderMixed(List<dynamic> items) async {
+    final ids = <Uuid128>[
+      for (final it in items)
+        if (it is TaskList) it.id else if (it is Folder) it.id,
+    ];
+    _record([SetOrderOp(_clock.issue(), DomainMapper.sidebarScope, ids)]);
+  }
+
+  List<Uuid128> _sidebarOrder() {
+    final members = {
+      ...lists.map((l) => l.id),
+      ...folders.map((f) => f.id),
+    };
+    return _replica.orderedIds(DomainMapper.sidebarScope, members);
   }
 
   // ───── Folders ─────
 
   Folder? folderById(Uuid128 id) {
-    try {
-      return _data.folders.firstWhere((f) => f.id == id);
-    } catch (_) {
-      return null;
-    }
+    final e = _replica.get(EntityKind.folder, id);
+    return e == null ? null : DomainMapper.folderFrom(e);
   }
 
   Future<void> addFolder(Folder folder) async {
-    _data.folders.add(folder);
-    await _save();
-    _syncService.pushEntity(
-      'folders',
-      folder.id.toString(),
-      ProtoSerializer.folderToBytes(folder),
-    );
+    _record([
+      ...DomainMapper.createFolder(folder, _clock),
+      SetOrderOp(_clock.issue(), DomainMapper.sidebarScope, [
+        ..._sidebarOrder(),
+        folder.id,
+      ]),
+    ]);
   }
 
   Future<void> updateFolder(Folder folder) async {
-    final i = _data.folders.indexWhere((f) => f.id == folder.id);
-    if (i >= 0) _data.folders[i] = folder;
-    await _save();
-    _syncService.pushEntity(
-      'folders',
-      folder.id.toString(),
-      ProtoSerializer.folderToBytes(folder),
-    );
+    _record(DomainMapper.updateFolder(folder, folderById(folder.id), _clock));
   }
 
   Future<void> deleteFolder(Uuid128 id) async {
-    final affectedLists = _data.lists.where((l) => l.folderId == id).toList();
-    for (final list in affectedLists) {
-      list.folderId = null;
-    }
-    _data.folders.removeWhere((f) => f.id == id);
-    await _save();
-    _syncService.pushDeletion('folders', id.toString());
-    for (final list in affectedLists) {
-      _syncService.pushEntity(
-        'lists',
-        list.id.toString(),
-        ProtoSerializer.listToBytes(list),
+    final ops = <Op>[DeleteEntityOp(_clock.issue(), EntityKind.folder, id)];
+    // Lists in the folder survive; they just lose their parent.
+    for (final l in lists.where((l) => l.folderId == id)) {
+      ops.add(
+        SetFieldOp(
+          _clock.issue(),
+          EntityKind.list,
+          l.id,
+          ListField.folderId,
+          const NullValue(),
+        ),
       );
     }
+    _record(ops);
   }
 
-  Future<void> reorderFolders(List<Folder> reorderedFolders) async {
-    for (var i = 0; i < reorderedFolders.length; i++) {
-      reorderedFolders[i].order = i;
-      final idx = _data.folders.indexWhere(
-        (f) => f.id == reorderedFolders[i].id,
-      );
-      if (idx >= 0) _data.folders[idx] = reorderedFolders[i];
+  Future<void> reorderFolders(List<Folder> reordered) async {
+    final current = _sidebarOrder();
+    final moving = reordered.map((f) => f.id).toList();
+    final slots = <int>[
+      for (var i = 0; i < current.length; i++)
+        if (moving.contains(current[i])) i,
+    ];
+    final next = List<Uuid128>.from(current);
+    for (var i = 0; i < slots.length && i < moving.length; i++) {
+      next[slots[i]] = moving[i];
     }
-    await _save();
-    for (final folder in reorderedFolders) {
-      _syncService.pushEntity(
-        'folders',
-        folder.id.toString(),
-        ProtoSerializer.folderToBytes(folder),
-      );
-    }
-  }
-
-  /// Reorders a mixed list of [TaskList] and [Folder] items, assigning each
-  /// item's order from its combined position so they share a number space.
-  Future<void> reorderMixed(List<dynamic> items) async {
-    for (var i = 0; i < items.length; i++) {
-      final it = items[i];
-      if (it is TaskList) {
-        it.order = i;
-        final idx = _data.lists.indexWhere((l) => l.id == it.id);
-        if (idx >= 0) _data.lists[idx] = it;
-      } else if (it is Folder) {
-        it.order = i;
-        final idx = _data.folders.indexWhere((f) => f.id == it.id);
-        if (idx >= 0) _data.folders[idx] = it;
-      }
-    }
-    await _save();
-    for (final it in items) {
-      if (it is TaskList) {
-        _syncService.pushEntity('lists', it.id.toString(), ProtoSerializer.listToBytes(it));
-      } else if (it is Folder) {
-        _syncService.pushEntity('folders', it.id.toString(), ProtoSerializer.folderToBytes(it));
-      }
-    }
+    _record([SetOrderOp(_clock.issue(), DomainMapper.sidebarScope, next)]);
   }
 
   // ───── Tags ─────
 
   Tag? tagById(Uuid128 id) {
-    try {
-      return _data.tags.firstWhere((t) => t.id == id);
-    } catch (_) {
-      return null;
-    }
+    final e = _replica.get(EntityKind.tag, id);
+    return e == null ? null : DomainMapper.tagFrom(e);
   }
 
   Future<void> addTag(Tag tag) async {
-    _data.tags.add(tag);
-    await _save();
-    _syncService.pushEntity('tags', tag.id.toString(), ProtoSerializer.tagToBytes(tag));
+    _record(DomainMapper.createTag(tag, _clock));
   }
 
   Future<void> updateTag(Tag tag) async {
-    final i = _data.tags.indexWhere((t) => t.id == tag.id);
-    if (i >= 0) _data.tags[i] = tag;
-    await _save();
-    _syncService.pushEntity('tags', tag.id.toString(), ProtoSerializer.tagToBytes(tag));
+    _record(DomainMapper.updateTag(tag, tagById(tag.id), _clock));
   }
 
   Future<void> deleteTag(Uuid128 id) async {
-    final affectedTasks = _data.tasks
-        .where((t) => t.tagIds.contains(id))
-        .toList();
-    for (final task in affectedTasks) {
-      task.tagIds.remove(id);
-    }
-    _data.tags.removeWhere((t) => t.id == id);
-    await _save();
-    _syncService.pushDeletion('tags', id.toString());
-    for (final task in affectedTasks) {
-      _syncService.pushEntity(
-        'tasks',
-        task.id.toString(),
-        ProtoSerializer.taskToBytes(task),
+    final ops = <Op>[DeleteEntityOp(_clock.issue(), EntityKind.tag, id)];
+    for (final t in tasks.where((t) => t.tagIds.contains(id))) {
+      ops.add(
+        SetFieldOp(
+          _clock.issue(),
+          EntityKind.task,
+          t.id,
+          TaskField.tagIds,
+          UuidSetValue({...t.tagIds}..remove(id)),
+        ),
       );
     }
+    _record(ops);
   }
 
-  // ───── Smart Lists ─────
+  // ───── Smart lists ─────
 
   SmartList? smartListById(Uuid128 id) {
-    // Check built-in smart lists first.
     for (final sl in builtInSmartLists) {
       if (sl.id == id) return sl;
     }
-    try {
-      return _data.smartLists.firstWhere((s) => s.id == id);
-    } catch (_) {
-      return null;
-    }
+    final e = _replica.get(EntityKind.smartList, id);
+    return e == null ? null : DomainMapper.smartListFrom(e);
   }
 
   Future<void> addSmartList(SmartList smartList) async {
-    _data.smartLists.add(smartList);
-    await _save();
-    _syncService.pushEntity(
-      'smart_lists',
-      smartList.id.toString(),
-      ProtoSerializer.smartListToBytes(smartList),
-    );
+    _record(DomainMapper.createSmartList(smartList, _clock));
   }
 
   Future<void> updateSmartList(SmartList smartList) async {
-    final i = _data.smartLists.indexWhere((s) => s.id == smartList.id);
-    if (i >= 0) _data.smartLists[i] = smartList;
-    await _save();
-    _syncService.pushEntity(
-      'smart_lists',
-      smartList.id.toString(),
-      ProtoSerializer.smartListToBytes(smartList),
+    _record(
+      DomainMapper.updateSmartList(
+        smartList,
+        smartListById(smartList.id),
+        _clock,
+      ),
     );
   }
 
   Future<void> deleteSmartList(Uuid128 id) async {
-    _data.smartLists.removeWhere((s) => s.id == id);
-    await _save();
-    _syncService.pushDeletion('smart_lists', id.toString());
+    _record([DeleteEntityOp(_clock.issue(), EntityKind.smartList, id)]);
   }
 
-  // ───── Sync ─────
+  // ───── Sync surface ─────
 
   Future<void> signIn() async {
     await dropboxService.signIn();
     if (dropboxService.isSignedIn) {
       notifyListeners();
-      _pullAndStartPolling();
+      await _syncNow(showSpinner: true);
+      _startPolling();
     }
   }
 
   Future<void> signOut() async {
-    _syncService.stopRemotePolling();
+    _stopPolling();
     await dropboxService.signOut();
     notifyListeners();
   }
 
-  Future<void> sync() async {
-    if (!dropboxService.isSignedIn) return;
-    _syncing = true;
-    notifyListeners();
+  Future<void> sync() => _syncNow(showSpinner: true);
 
-    try {
-      _syncService.stopRemotePolling();
-      _data = await _syncService.fullSync(_data);
-      _ensureDefaults();
-      await _storage.save(_data);
-    } catch (e) {
-      debugPrint('Sync error: $e');
-    }
-
-    _syncing = false;
-    notifyListeners();
-    // Restart polling after manual sync.
-    _syncService.startRemotePolling(() => _data);
-  }
-
+  /// Re-upload everything by compacting a fresh base from local state.
   Future<void> forceUpload() async {
     if (!dropboxService.isSignedIn) return;
     _syncing = true;
     notifyListeners();
     try {
-      await _syncService.forceUploadAll(_data);
+      await _engine.sync();
+      await _saveSyncState();
     } catch (e) {
-      debugPrint('Upload error: $e');
+      debugPrint('Force upload failed: $e');
     }
     _syncing = false;
     notifyListeners();
   }
 
+  /// Discard local state and rebuild it from the server.
   Future<void> forceDownload() async {
     if (!dropboxService.isSignedIn) return;
     _syncing = true;
     notifyListeners();
     try {
-      _data = await _syncService.forceDownloadAll();
+      final deviceId = _engine.deviceId;
+      _engine = SyncEngine(
+        store: DropboxStore(dropboxService),
+        clock: _clock,
+        deviceId: deviceId,
+      );
+      await _engine.hydrate();
+      _invalidate();
       _ensureDefaults();
-      await _storage.save(_data);
+      await _persistLocal();
+      await _saveSyncState();
     } catch (e) {
-      debugPrint('Download error: $e');
+      debugPrint('Force download failed: $e');
     }
     _syncing = false;
     notifyListeners();
   }
 
-  Uuid128 newId() => Uuid128.generateV4();
+  /// What a fresh device would have to download, for the settings screen.
+  ({int files, int bytes}) get coldStartCost => _engine.coldStartCost();
+
+  // ───── Remote change polling ─────
+
+  void _startPolling() {
+    if (_polling) return;
+    _polling = true;
+    unawaited(_pollLoop());
+  }
+
+  void _stopPolling() {
+    _polling = false;
+    _pollTimer?.cancel();
+  }
+
+  /// Longpoll Dropbox and sync whenever it reports a change.
+  Future<void> _pollLoop() async {
+    while (_polling && dropboxService.isSignedIn) {
+      try {
+        _longpollCursor ??= await dropboxService.getLatestCursor();
+        if (_longpollCursor == null) {
+          await Future.delayed(const Duration(seconds: 30));
+          continue;
+        }
+        final changed = await dropboxService.longpollForChanges(
+          _longpollCursor!,
+          timeout: 120,
+        );
+        if (!_polling) break;
+        if (changed == null) {
+          _longpollCursor = null;
+          await Future.delayed(const Duration(seconds: 5));
+          continue;
+        }
+        _longpollCursor = await dropboxService.getLatestCursor();
+        if (changed) await _syncNow();
+      } catch (e) {
+        debugPrint('Poll loop error: $e');
+        _longpollCursor = null;
+        if (_polling) await Future.delayed(const Duration(seconds: 10));
+      }
+    }
+  }
+
+  // ───── Deep links (OAuth redirect) ─────
+
+  void _initDeepLinks() async {
+    try {
+      final initial = await _appLinks.getInitialLink();
+      if (initial != null) _handleIncomingLink(initial);
+    } catch (_) {
+      // No initial link; nothing to do.
+    }
+    _appLinks.uriLinkStream.listen(_handleIncomingLink);
+  }
+
+  void _handleIncomingLink(Uri uri) async {
+    if (uri.scheme != 'todopen' || uri.host != 'auth') return;
+    final code = uri.queryParameters['code'];
+    if (code == null) return;
+    if (await dropboxService.handleRedirectCode(code)) {
+      notifyListeners();
+      await _syncNow(showSpinner: true);
+      _startPolling();
+    }
+  }
 }

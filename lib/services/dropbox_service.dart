@@ -116,8 +116,9 @@ class DropboxService {
   ///
   /// After exhausting retries it returns the last response as-is.
   Future<http.Response> _retryWithBackoff(
-    Future<http.Response> Function() request,
-  ) async {
+    Future<http.Response> Function() request, {
+    bool retryOn409 = true,
+  }) async {
     late http.Response response;
     for (var attempt = 0; attempt <= _maxRetries; attempt++) {
       if (attempt > 0) {
@@ -140,12 +141,40 @@ class DropboxService {
       if (!_isRetryable(response.statusCode) || attempt == _maxRetries) {
         return response;
       }
+      if (response.statusCode == 409 && !retryOn409) return response;
       debugPrint(
         'Dropbox retryable ${response.statusCode} – '
         'retry ${attempt + 1}/$_maxRetries',
       );
     }
     return response;
+  }
+
+  /// Issue an authenticated POST with token refresh and retry/backoff.
+  ///
+  /// Exposed so the sync layer can add endpoints (conditional upload,
+  /// batch delete) without duplicating auth handling.
+  ///
+  /// [retryOn409] must be false for conditional writes: there a 409 means
+  /// "you lost the compare-and-swap", and retrying with the same stale rev
+  /// would just fail again while hiding the conflict from the caller.
+  Future<http.Response> sendAuthorized(
+    Uri url, {
+    Map<String, String> extraHeaders = const {},
+    List<int>? body,
+    bool retryOn409 = true,
+  }) async {
+    await _ensureValidToken();
+    return _retryWithBackoff(() {
+      return http.post(
+        url,
+        headers: {
+          'Authorization': 'Bearer $_accessToken',
+          ...extraHeaders,
+        },
+        body: body,
+      );
+    }, retryOn409: retryOn409);
   }
 
   // ───── File operations ─────
