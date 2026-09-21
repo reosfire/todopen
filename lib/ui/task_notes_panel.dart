@@ -2,9 +2,12 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
+import 'package:markdown/markdown.dart' as md;
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../models/task.dart';
 import '../state/app_state.dart';
+import 'markdown_styles.dart';
 
 enum _PanelMode { edit, preview, split }
 
@@ -18,15 +21,27 @@ class TaskNotesPanel extends StatefulWidget {
 }
 
 class _TaskNotesPanelState extends State<TaskNotesPanel> {
+  /// Below this there is no room for two readable columns, so the mode
+  /// switcher drops Split instead of offering a view that cannot work.
+  static const double _splitMinPanelWidth = 560;
+
   late TextEditingController _notesCtrl;
   late TextEditingController _titleCtrl;
+  final FocusNode _notesFocus = FocusNode();
+  final ScrollController _previewScroll = ScrollController();
+
+  /// Ties the format bar to the notes field so toolbar presses do not read as
+  /// taps outside it. Instance-scoped, so two panels never share a group.
+  final Object _editorTapGroup = Object();
   _PanelMode _mode = _PanelMode.edit;
   bool _dirty = false;
-  double _leftPaneWidth = 300;
+  bool _showSaved = false;
+  double _leftPaneWidth = 360;
   double _splitOverflow = 0.0;
   bool _splitLockedLeft = false;
   bool _splitLockedRight = false;
   Timer? _debounceTimer;
+  Timer? _savedFlashTimer;
 
   @override
   void initState() {
@@ -59,14 +74,19 @@ class _TaskNotesPanelState extends State<TaskNotesPanel> {
   @override
   void dispose() {
     _debounceTimer?.cancel();
+    _savedFlashTimer?.cancel();
     _notesCtrl.removeListener(_onNotesChanged);
     _titleCtrl.removeListener(_onNotesChanged);
     _notesCtrl.dispose();
     _titleCtrl.dispose();
+    _notesFocus.dispose();
+    _previewScroll.dispose();
     super.dispose();
   }
 
   void _onNotesChanged() {
+    // The word count and live preview read the controller directly, so every
+    // keystroke needs a rebuild — not just the first one that dirties.
     setState(() => _dirty = true);
     _debounceTimer?.cancel();
     _debounceTimer = Timer(const Duration(milliseconds: 800), () {
@@ -89,172 +109,495 @@ class _TaskNotesPanelState extends State<TaskNotesPanel> {
     updated.notes = newNotes;
     state.updateTask(updated);
     _dirty = false;
+    // "Saved" lingers a moment so an autosave is actually visible, then fades
+    // rather than sitting there as permanent chrome.
+    if (mounted) {
+      setState(() => _showSaved = true);
+      _savedFlashTimer?.cancel();
+      _savedFlashTimer = Timer(const Duration(seconds: 2), () {
+        if (mounted) setState(() => _showSaved = false);
+      });
+    }
   }
+
+  // ───── Markdown editing actions ─────
+
+  /// Wraps the selection in [token], or unwraps it when it is already wrapped.
+  /// With nothing selected it inserts the pair and parks the caret between.
+  void _toggleWrap(String token) {
+    final text = _notesCtrl.text;
+    final sel = _notesCtrl.selection;
+    if (!sel.isValid) return;
+    final start = sel.start;
+    final end = sel.end;
+    final n = token.length;
+
+    // Markers just outside the selection: the common case after a previous
+    // toggle left the inner text selected.
+    final wrappedOutside = start >= n &&
+        end + n <= text.length &&
+        text.substring(start - n, start) == token &&
+        text.substring(end, end + n) == token;
+    if (wrappedOutside) {
+      final stripped =
+          text.replaceRange(end, end + n, '').replaceRange(start - n, start, '');
+      _setText(
+        stripped,
+        TextSelection(baseOffset: start - n, extentOffset: end - n),
+      );
+      return;
+    }
+
+    final selected = text.substring(start, end);
+    if (selected.length >= 2 * n &&
+        selected.startsWith(token) &&
+        selected.endsWith(token)) {
+      final inner = selected.substring(n, selected.length - n);
+      _setText(
+        text.replaceRange(start, end, inner),
+        TextSelection(baseOffset: start, extentOffset: start + inner.length),
+      );
+      return;
+    }
+
+    _setText(
+      text.replaceRange(start, end, '$token$selected$token'),
+      selected.isEmpty
+          ? TextSelection.collapsed(offset: start + n)
+          : TextSelection(baseOffset: start + n, extentOffset: end + n),
+    );
+  }
+
+  /// Applies [build] to every line the selection touches, toggling the prefix
+  /// back off when all of those lines already carry it.
+  void _toggleLinePrefix(String Function(int indexInBlock) build) {
+    final text = _notesCtrl.text;
+    final sel = _notesCtrl.selection;
+    if (!sel.isValid) return;
+
+    final lineStart =
+        text.lastIndexOf('\n', sel.start > 0 ? sel.start - 1 : 0) + 1;
+    var lineEnd = text.indexOf('\n', sel.end);
+    if (lineEnd == -1) lineEnd = text.length;
+
+    final lines = text.substring(lineStart, lineEnd).split('\n');
+    final prefixes = [for (var i = 0; i < lines.length; i++) build(i)];
+
+    var allPrefixed = true;
+    for (var i = 0; i < lines.length; i++) {
+      if (!lines[i].startsWith(prefixes[i])) {
+        allPrefixed = false;
+        break;
+      }
+    }
+
+    final updated = <String>[
+      for (var i = 0; i < lines.length; i++)
+        allPrefixed
+            ? lines[i].substring(prefixes[i].length)
+            : '${prefixes[i]}${_stripBlockPrefix(lines[i])}',
+    ];
+
+    final replacement = updated.join('\n');
+    _setText(
+      text.replaceRange(lineStart, lineEnd, replacement),
+      TextSelection.collapsed(offset: lineStart + replacement.length),
+    );
+  }
+
+  /// Strips an existing heading / bullet / numbered / quote / task marker so a
+  /// new block style replaces the old one instead of stacking on top of it.
+  static String _stripBlockPrefix(String line) {
+    return line.replaceFirst(
+      RegExp(r'^\s*(?:#{1,6} +|> ?|[-*+] +(?:\[[ xX]\] +)?|\d+\. +)'),
+      '',
+    );
+  }
+
+  void _insertLink() {
+    final text = _notesCtrl.text;
+    final sel = _notesCtrl.selection;
+    if (!sel.isValid) return;
+    final selected = text.substring(sel.start, sel.end);
+    final label = selected.isEmpty ? 'text' : selected;
+    _setText(
+      text.replaceRange(sel.start, sel.end, '[$label](url)'),
+      // Land on `url`: the part that always has to be typed is pre-selected.
+      TextSelection(
+        baseOffset: sel.start + label.length + 3,
+        extentOffset: sel.start + label.length + 6,
+      ),
+    );
+  }
+
+  void _setText(String text, TextSelection selection) {
+    _notesCtrl.value = TextEditingValue(text: text, selection: selection);
+    _notesFocus.requestFocus();
+  }
+
+  // ───── Editor key handling ─────
+
+  KeyEventResult _handleEditorKey(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent) return KeyEventResult.ignored;
+    final text = _notesCtrl.text;
+    final sel = _notesCtrl.selection;
+    if (!sel.isValid) return KeyEventResult.ignored;
+
+    final accel = HardwareKeyboard.instance.isControlPressed ||
+        HardwareKeyboard.instance.isMetaPressed;
+
+    if (accel) {
+      switch (event.logicalKey) {
+        case LogicalKeyboardKey.keyB:
+          _toggleWrap('**');
+          return KeyEventResult.handled;
+        case LogicalKeyboardKey.keyI:
+          _toggleWrap('_');
+          return KeyEventResult.handled;
+        case LogicalKeyboardKey.keyK:
+          _insertLink();
+          return KeyEventResult.handled;
+        case LogicalKeyboardKey.keyS:
+          _save(context.read<AppState>());
+          return KeyEventResult.handled;
+      }
+      return KeyEventResult.ignored;
+    }
+
+    if (event.logicalKey == LogicalKeyboardKey.tab) {
+      const indent = '    ';
+      _setText(
+        text.replaceRange(sel.start, sel.end, indent),
+        TextSelection.collapsed(offset: sel.start + indent.length),
+      );
+      return KeyEventResult.handled;
+    }
+
+    if (event.logicalKey == LogicalKeyboardKey.enter && sel.isCollapsed) {
+      final continued = _continueList(text, sel.start);
+      if (continued) return KeyEventResult.handled;
+      return KeyEventResult.ignored;
+    }
+
+    // Backspace eats a full four-space indent so Tab and Backspace agree.
+    if (event.logicalKey == LogicalKeyboardKey.backspace &&
+        sel.isCollapsed &&
+        sel.start >= 4 &&
+        text.substring(sel.start - 4, sel.start) == '    ') {
+      _setText(
+        text.replaceRange(sel.start - 4, sel.start, ''),
+        TextSelection.collapsed(offset: sel.start - 4),
+      );
+      return KeyEventResult.handled;
+    }
+
+    return KeyEventResult.ignored;
+  }
+
+  /// Carries the current list marker onto the next line. An empty item ends
+  /// the list instead of laying down another bullet, which is what every other
+  /// Markdown editor does and what muscle memory expects.
+  ///
+  /// Returns false when the caret is not in a list, leaving Enter alone.
+  bool _continueList(String text, int caret) {
+    final lineStart = text.lastIndexOf('\n', caret > 0 ? caret - 1 : 0) + 1;
+    final line = text.substring(lineStart, caret);
+    final match =
+        RegExp(r'^([ \t]*)([-*+]|\d+\.) +(\[[ xX]\] +)?').firstMatch(line);
+    if (match == null) return false;
+
+    if (line.substring(match.end).trim().isEmpty) {
+      _setText(
+        text.replaceRange(lineStart, caret, ''),
+        TextSelection.collapsed(offset: lineStart),
+      );
+      return true;
+    }
+
+    final indent = match[1]!;
+    final marker = match[2]!;
+    final checkbox = match[3] == null ? '' : '[ ] ';
+    final nextMarker = marker.endsWith('.')
+        ? '${(int.tryParse(marker.substring(0, marker.length - 1)) ?? 0) + 1}.'
+        : marker;
+    final insert = '\n$indent$nextMarker $checkbox';
+    _setText(
+      text.replaceRange(caret, caret, insert),
+      TextSelection.collapsed(offset: caret + insert.length),
+    );
+    return true;
+  }
+
+  // ───── Build ─────
 
   @override
   Widget build(BuildContext context) {
     final state = context.read<AppState>();
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        // Header
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          decoration: BoxDecoration(
-            border: Border(
-              bottom: BorderSide(color: Theme.of(context).dividerColor),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final splitAllowed = constraints.maxWidth >= _splitMinPanelWidth;
+        // Falling back on a narrow panel keeps `_mode` intact, so widening the
+        // panel again restores the split the user had chosen.
+        final mode = (!splitAllowed && _mode == _PanelMode.split)
+            ? _PanelMode.edit
+            : _mode;
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _buildHeader(state, mode, splitAllowed),
+            if (mode != _PanelMode.preview) _buildFormatBar(),
+            Expanded(
+              child: switch (mode) {
+                _PanelMode.edit => _buildEditor(state),
+                _PanelMode.preview => _buildPreview(),
+                _PanelMode.split => _buildSplit(state, constraints),
+              },
             ),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _titleCtrl,
-                      style: Theme.of(context).textTheme.titleMedium,
-                      decoration: const InputDecoration(
-                        border: InputBorder.none,
-                        hintText: 'Task title',
-                        isDense: true,
-                        contentPadding: EdgeInsets.zero,
-                      ),
-                      onSubmitted: (_) => _save(state),
-                      onTapOutside: (_) => _save(state),
-                    ),
-                  ),
-                  if (_dirty)
-                    TextButton(
-                      onPressed: () => _save(state),
-                      child: const Text('Save'),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 4),
-              Row(
-                children: [
-                  _ToolbarButton(
-                    label: 'Edit',
-                    active: _mode == _PanelMode.edit,
-                    onTap: () => setState(() => _mode = _PanelMode.edit),
-                  ),
-                  const SizedBox(width: 8),
-                  _ToolbarButton(
-                    label: 'Preview',
-                    active: _mode == _PanelMode.preview,
-                    onTap: () {
-                      _save(state);
-                      setState(() => _mode = _PanelMode.preview);
-                    },
-                  ),
-                  const SizedBox(width: 8),
-                  _ToolbarButton(
-                    label: 'Split',
-                    active: _mode == _PanelMode.split,
-                    onTap: () => setState(() => _mode = _PanelMode.split),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-        // Body
-        Expanded(
-          child: switch (_mode) {
-            _PanelMode.edit => _buildEditor(state),
-            _PanelMode.preview => _buildPreview(),
-            _PanelMode.split => _buildSplit(state),
-          },
-        ),
-      ],
+          ],
+        );
+      },
     );
   }
 
-  Widget _buildEditor(AppState state) {
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Focus(
-        onKeyEvent: (node, event) {
-          if (event is! KeyDownEvent) return KeyEventResult.ignored;
-          final text = _notesCtrl.text;
-          final sel = _notesCtrl.selection;
-
-          if (event.logicalKey == LogicalKeyboardKey.tab) {
-            const indent = '    ';
-            final newText = text.replaceRange(sel.start, sel.end, indent);
-            _notesCtrl.value = TextEditingValue(
-              text: newText,
-              selection: TextSelection.collapsed(
-                  offset: sel.start + indent.length),
-            );
-            return KeyEventResult.handled;
-          }
-
-          if (event.logicalKey == LogicalKeyboardKey.backspace &&
-              sel.isCollapsed &&
-              sel.start >= 4 &&
-              text.substring(sel.start - 4, sel.start) == '    ') {
-            final newText = text.replaceRange(sel.start - 4, sel.start, '');
-            _notesCtrl.value = TextEditingValue(
-              text: newText,
-              selection: TextSelection.collapsed(offset: sel.start - 4),
-            );
-            return KeyEventResult.handled;
-          }
-
-          return KeyEventResult.ignored;
-        },
-        child: TextField(
-          controller: _notesCtrl,
-          maxLines: null,
-          expands: true,
-          textAlignVertical: TextAlignVertical.top,
-          decoration: const InputDecoration(
-            border: InputBorder.none,
-            hintText: 'Write notes in Markdown...',
-            isDense: true,
-            contentPadding: EdgeInsets.zero,
+  Widget _buildHeader(AppState state, _PanelMode mode, bool splitAllowed) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 10, 12, 10),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerLow,
+        border: Border(bottom: BorderSide(color: theme.dividerColor)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _titleCtrl,
+                  style: theme.textTheme.titleMedium
+                      ?.copyWith(fontWeight: FontWeight.w600),
+                  maxLines: 1,
+                  textInputAction: TextInputAction.done,
+                  decoration: const InputDecoration(
+                    border: InputBorder.none,
+                    hintText: 'Task title',
+                    isDense: true,
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                  onSubmitted: (_) => _save(state),
+                  onTapOutside: (_) => _save(state),
+                ),
+              ),
+              const SizedBox(width: 8),
+              _SaveStatus(
+                dirty: _dirty,
+                showSaved: _showSaved,
+                onSave: () => _save(state),
+              ),
+            ],
           ),
-          style: const TextStyle(fontFamily: 'monospace', fontSize: 14),
-          onTapOutside: (_) => _save(state),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              _ModeSwitcher(
+                mode: mode,
+                splitAllowed: splitAllowed,
+                onChanged: (next) {
+                  if (next == _PanelMode.preview) _save(state);
+                  setState(() => _mode = next);
+                },
+              ),
+              // The switcher keeps its intrinsic width; on a narrow phone the
+              // word count is the part that gives way rather than overflowing.
+              Expanded(
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: _WordCount(text: _notesCtrl.text),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFormatBar() {
+    final theme = Theme.of(context);
+    return TapRegion(
+      // Shares the editor's group so pressing a format button is not treated
+      // as tapping outside the field — otherwise every button press would
+      // unfocus the editor and flush a save mid-edit.
+      groupId: _editorTapGroup,
+      child: Container(
+        height: 40,
+        decoration: BoxDecoration(
+          border: Border(bottom: BorderSide(color: theme.dividerColor)),
+        ),
+        // Horizontally scrollable so the bar degrades gracefully in the
+        // narrow bottom sheet instead of overflowing.
+        child: ListView(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          children: [
+            _FormatButton(
+              icon: Icons.format_bold,
+              tooltip: 'Bold  (Ctrl+B)',
+              onTap: () => _toggleWrap('**'),
+            ),
+            _FormatButton(
+              icon: Icons.format_italic,
+              tooltip: 'Italic  (Ctrl+I)',
+              onTap: () => _toggleWrap('_'),
+            ),
+            _FormatButton(
+              icon: Icons.strikethrough_s,
+              tooltip: 'Strikethrough',
+              onTap: () => _toggleWrap('~~'),
+            ),
+            _FormatButton(
+              icon: Icons.code,
+              tooltip: 'Inline code',
+              onTap: () => _toggleWrap('`'),
+            ),
+            const _FormatDivider(),
+            _FormatButton(
+              icon: Icons.title,
+              tooltip: 'Heading',
+              onTap: () => _toggleLinePrefix((_) => '## '),
+            ),
+            _FormatButton(
+              icon: Icons.format_list_bulleted,
+              tooltip: 'Bulleted list',
+              onTap: () => _toggleLinePrefix((_) => '- '),
+            ),
+            _FormatButton(
+              icon: Icons.format_list_numbered,
+              tooltip: 'Numbered list',
+              onTap: () => _toggleLinePrefix((i) => '${i + 1}. '),
+            ),
+            _FormatButton(
+              icon: Icons.checklist,
+              tooltip: 'Task list',
+              onTap: () => _toggleLinePrefix((_) => '- [ ] '),
+            ),
+            _FormatButton(
+              icon: Icons.format_quote,
+              tooltip: 'Quote',
+              onTap: () => _toggleLinePrefix((_) => '> '),
+            ),
+            const _FormatDivider(),
+            _FormatButton(
+              icon: Icons.link,
+              tooltip: 'Link  (Ctrl+K)',
+              onTap: _insertLink,
+            ),
+          ],
         ),
       ),
     );
   }
 
-  Widget _buildPreview() {
-    final notes = _notesCtrl.text;
-    if (notes.trim().isEmpty) {
-      return Center(
-        child: Text(
-          'No notes',
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
-          ),
+  Widget _buildEditor(AppState state) {
+    return Focus(
+      onKeyEvent: _handleEditorKey,
+      child: TextField(
+        controller: _notesCtrl,
+        focusNode: _notesFocus,
+        maxLines: null,
+        expands: true,
+        textAlignVertical: TextAlignVertical.top,
+        cursorWidth: 2,
+        groupId: _editorTapGroup,
+        scrollPadding: const EdgeInsets.all(40),
+        decoration: const InputDecoration(
+          border: InputBorder.none,
+          hintText: 'Write notes in Markdown…',
+          isDense: true,
+          contentPadding: EdgeInsets.fromLTRB(16, 14, 16, 24),
         ),
-      );
-    }
-    return Markdown(
-      data: notes,
-      padding: const EdgeInsets.all(16),
+        style: TextStyle(
+          fontFamily: kNotesMonoFamily,
+          fontSize: 14,
+          height: 1.55,
+          color: Theme.of(context).colorScheme.onSurface,
+        ),
+        onTapOutside: (_) => _save(state),
+      ),
     );
   }
 
-  Widget _buildSplit(AppState state) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final minWidth = 80.0;
-        final maxWidth = constraints.maxWidth - 80.0;
-        final leftWidth = _leftPaneWidth.clamp(minWidth, maxWidth);
+  Widget _buildPreview() {
+    final theme = Theme.of(context);
+    final notes = _notesCtrl.text;
 
-        return ClipRect(
-          child: Row(
+    if (notes.trim().isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            SizedBox(width: leftWidth, child: _buildEditor(state)),
-            GestureDetector(
-              behavior: HitTestBehavior.translucent,
+            Icon(
+              Icons.notes_outlined,
+              size: 32,
+              color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Nothing to preview yet',
+              style: theme.textTheme.bodyMedium
+                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Markdown(
+      data: notes,
+      controller: _previewScroll,
+      selectable: true,
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+      styleSheet: notesMarkdownStyleSheet(context),
+      // GitHub-flavored, so task lists, tables and strikethrough render the
+      // way people habitually write them in notes.
+      extensionSet: md.ExtensionSet.gitHubFlavored,
+      softLineBreak: true,
+      onTapLink: (text, href, title) => _openLink(href),
+    );
+  }
+
+  Future<void> _openLink(String? href) async {
+    if (href == null || href.isEmpty) return;
+    final uri = Uri.tryParse(href);
+    var opened = false;
+    if (uri != null) {
+      opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
+    if (!opened && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not open $href')),
+      );
+    }
+  }
+
+  Widget _buildSplit(AppState state, BoxConstraints constraints) {
+    const minWidth = 240.0;
+    const handleWidth = 9.0;
+    final maxWidth = constraints.maxWidth - minWidth - handleWidth;
+    final leftWidth = _leftPaneWidth.clamp(minWidth, maxWidth);
+    final theme = Theme.of(context);
+
+    return ClipRect(
+      child: Row(
+        children: [
+          SizedBox(width: leftWidth, child: _buildEditor(state)),
+          MouseRegion(
+            cursor: SystemMouseCursors.resizeColumn,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
               onHorizontalDragUpdate: (details) {
                 setState(() {
                   double delta = details.delta.dx;
@@ -296,33 +639,159 @@ class _TaskNotesPanelState extends State<TaskNotesPanel> {
                   }
                 });
               },
-              child: MouseRegion(
-                cursor: SystemMouseCursors.resizeColumn,
-                child: SizedBox(
-                  width: 8,
-                  child: VerticalDivider(
-                    width: 2,
-                    thickness: 2,
-                    color: Theme.of(context).dividerColor,
-                  ),
+              child: SizedBox(
+                width: handleWidth,
+                child: Center(
+                  child: Container(width: 1, color: theme.dividerColor),
                 ),
               ),
             ),
-            Expanded(child: _buildPreview()),
-          ],
           ),
-        );
-      },
+          // A slightly recessed reading column separates rendered output from
+          // the editor without drawing another hard border.
+          Expanded(
+            child: Container(
+              color: theme.colorScheme.surfaceContainerLowest,
+              child: _buildPreview(),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
 
-class _ToolbarButton extends StatelessWidget {
+// ───── Header pieces ─────
+
+class _SaveStatus extends StatelessWidget {
+  final bool dirty;
+  final bool showSaved;
+  final VoidCallback onSave;
+
+  const _SaveStatus({
+    required this.dirty,
+    required this.showSaved,
+    required this.onSave,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    if (dirty) {
+      return TextButton.icon(
+        onPressed: onSave,
+        icon: const Icon(Icons.cloud_upload_outlined, size: 16),
+        label: const Text('Save'),
+        style: TextButton.styleFrom(
+          visualDensity: VisualDensity.compact,
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+        ),
+      );
+    }
+
+    return AnimatedOpacity(
+      opacity: showSaved ? 1 : 0,
+      duration: const Duration(milliseconds: 250),
+      child: Padding(
+        padding: const EdgeInsets.only(right: 6),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.check_circle_outline,
+              size: 15,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+            const SizedBox(width: 4),
+            Text(
+              'Saved',
+              style: theme.textTheme.labelSmall
+                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _WordCount extends StatelessWidget {
+  final String text;
+
+  const _WordCount({required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    final trimmed = text.trim();
+    if (trimmed.isEmpty) return const SizedBox.shrink();
+    final words = trimmed.split(RegExp(r'\s+')).length;
+    return Padding(
+      padding: const EdgeInsets.only(left: 8, right: 4),
+      child: Text(
+        words == 1 ? '1 word' : '$words words',
+        maxLines: 1,
+        overflow: TextOverflow.clip,
+        softWrap: false,
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+      ),
+    );
+  }
+}
+
+class _ModeSwitcher extends StatelessWidget {
+  final _PanelMode mode;
+  final bool splitAllowed;
+  final ValueChanged<_PanelMode> onChanged;
+
+  const _ModeSwitcher({
+    required this.mode,
+    required this.splitAllowed,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final modes = <(_PanelMode, IconData, String)>[
+      (_PanelMode.edit, Icons.edit_outlined, 'Edit'),
+      (_PanelMode.preview, Icons.visibility_outlined, 'Preview'),
+      if (splitAllowed)
+        (_PanelMode.split, Icons.vertical_split_outlined, 'Split'),
+    ];
+
+    return Container(
+      padding: const EdgeInsets.all(2),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.7),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (final (value, icon, label) in modes)
+            _ModeChip(
+              icon: icon,
+              label: label,
+              active: mode == value,
+              onTap: () => onChanged(value),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ModeChip extends StatelessWidget {
+  final IconData icon;
   final String label;
   final bool active;
   final VoidCallback onTap;
 
-  const _ToolbarButton({
+  const _ModeChip({
+    required this.icon,
     required this.label,
     required this.active,
     required this.onTap,
@@ -330,26 +799,92 @@ class _ToolbarButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-        decoration: BoxDecoration(
-          color: active
-              ? Theme.of(context).colorScheme.primaryContainer
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(6),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w500,
-            color: active
-                ? Theme.of(context).colorScheme.onPrimaryContainer
-                : Theme.of(context).colorScheme.onSurfaceVariant,
+    final theme = Theme.of(context);
+    final fg = active
+        ? theme.colorScheme.onPrimaryContainer
+        : theme.colorScheme.onSurfaceVariant;
+
+    return Semantics(
+      button: true,
+      selected: active,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(6),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          curve: Curves.easeOut,
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          decoration: BoxDecoration(
+            color:
+                active ? theme.colorScheme.primaryContainer : Colors.transparent,
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 14, color: fg),
+              const SizedBox(width: 5),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: fg,
+                ),
+              ),
+            ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+// ───── Format bar pieces ─────
+
+class _FormatButton extends StatelessWidget {
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onTap;
+
+  const _FormatButton({
+    required this.icon,
+    required this.tooltip,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      waitDuration: const Duration(milliseconds: 500),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(6),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          child: Icon(
+            icon,
+            size: 18,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _FormatDivider extends StatelessWidget {
+  const _FormatDivider();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 10),
+      child: VerticalDivider(
+        width: 1,
+        thickness: 1,
+        color: Theme.of(context).dividerColor,
       ),
     );
   }

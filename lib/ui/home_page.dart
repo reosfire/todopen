@@ -922,14 +922,22 @@ class _HomePageState extends State<HomePage> {
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
-      builder: (_) => DraggableScrollableSheet(
-        initialChildSize: 0.6,
-        minChildSize: 0.3,
-        maxChildSize: 0.95,
-        expand: false,
-        builder: (_, scrollController) => TaskNotesPanel(
-          key: ValueKey(task.id),
-          task: state.taskById(task.id) ?? task,
+      showDragHandle: true,
+      // The editor and preview scroll themselves, so a DraggableScrollableSheet
+      // has nothing to drive its controller with; a tall fixed sheet plus the
+      // handle gives the same reach with a drag target that actually works.
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.92,
+      ),
+      builder: (ctx) => Padding(
+        // Keep the editor above the on-screen keyboard.
+        padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+        child: SizedBox(
+          height: MediaQuery.of(ctx).size.height * 0.75,
+          child: TaskNotesPanel(
+            key: ValueKey(task.id),
+            task: state.taskById(task.id) ?? task,
+          ),
         ),
       ),
     );
