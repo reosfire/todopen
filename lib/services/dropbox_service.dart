@@ -431,6 +431,11 @@ class DropboxService {
       },
     );
 
+    // The auth code is single-use, so this verifier can never be replayed
+    // whatever the outcome. Drop it now rather than leaving it at rest until
+    // the next sign-out.
+    await _clearCodeVerifier();
+
     if (response.statusCode != 200) {
       debugPrint('Dropbox token exchange failed: ${response.body}');
       return false;
@@ -598,6 +603,16 @@ class DropboxService {
   Future<String?> _loadCodeVerifier() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString(_keyCodeVerifier);
+  }
+
+  Future<void> _clearCodeVerifier() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_keyCodeVerifier);
+    } catch (e) {
+      // Never let losing the verifier fail a sign-in that otherwise worked.
+      debugPrint('Clearing Dropbox code verifier failed: $e');
+    }
   }
 }
 
