@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../state/app_state.dart';
 import '../models/task_list.dart';
@@ -23,6 +24,31 @@ import 'side_panel.dart';
 /// Whether a search covers every task or only the selected list.
 enum SearchScope { global, list }
 
+/// Opens search over the selected list (Ctrl/Cmd+F). Falls back to a global
+/// search when what is selected has no single backing list.
+class SearchListIntent extends Intent {
+  const SearchListIntent();
+}
+
+/// Opens search over every task (Ctrl/Cmd+Shift+F).
+class SearchAllIntent extends Intent {
+  const SearchAllIntent();
+}
+
+/// Ctrl+F / Ctrl+Shift+F, with Cmd on macOS and iOS. Registered above the
+/// whole page so the shortcut fires wherever focus happens to be, including
+/// while a search is already open.
+final Map<ShortcutActivator, Intent> searchShortcuts = {
+  const SingleActivator(LogicalKeyboardKey.keyF, control: true):
+      const SearchListIntent(),
+  const SingleActivator(LogicalKeyboardKey.keyF, meta: true):
+      const SearchListIntent(),
+  const SingleActivator(LogicalKeyboardKey.keyF, control: true, shift: true):
+      const SearchAllIntent(),
+  const SingleActivator(LogicalKeyboardKey.keyF, meta: true, shift: true):
+      const SearchAllIntent(),
+};
+
 // ───── Side panel geometry ─────
 
 const double _defaultSidePanelWidth = 280;
@@ -44,6 +70,16 @@ const double _minSectionHeight = 44;
 const _sidePanelWidthKey = 'side_panel_width';
 const _smartListsHeightKey = 'side_panel_smart_lists_height';
 const _listsHeightKey = 'side_panel_lists_height';
+
+/// The page-level focus scope.
+///
+/// It exists so Ctrl+F works before anything has been clicked, but it must
+/// never take primary focus itself: a focusable node here outranks the
+/// `autofocus` on the add-task field, so the field never becomes the primary
+/// focus and its arrow keys stop moving the caret. Built by a function so the
+/// test can assert on this exact configuration.
+Focus homePageFocusWrapper({Widget child = const SizedBox.shrink()}) =>
+    Focus(autofocus: true, canRequestFocus: false, child: child);
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -157,6 +193,26 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
+  /// Handles the Ctrl+F / Ctrl+Shift+F shortcuts.
+  ///
+  /// Pressing the shortcut while search is already open keeps the query and
+  /// selects it, so a second press retargets the scope or lets the user type
+  /// over what is there rather than silently discarding their typing.
+  void _searchShortcut(SearchScope scope) {
+    if (!_searchActive) {
+      // Not `closeDrawer`: that pops the navigator, and a shortcut can fire
+      // with no drawer open, which would pop the page instead.
+      _openSearch(scope);
+      return;
+    }
+    setState(() => _searchScope = scope);
+    _searchFocus.requestFocus();
+    _searchController.selection = TextSelection(
+      baseOffset: 0,
+      extentOffset: _searchController.text.length,
+    );
+  }
+
   /// Clears search state. Call inside an existing setState.
   void _exitSearch() {
     if (!_searchActive) return;
@@ -231,6 +287,35 @@ class _HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
+    // Wrapped around the whole page so Ctrl+F works wherever focus is. The
+    // Focus below only anchors the shortcut scope before anything has been
+    // clicked; it must not take primary focus itself, or it outranks the
+    // autofocus on a TextField and swallows that field's arrow keys.
+    return Shortcuts(
+      shortcuts: searchShortcuts,
+      child: Actions(
+        actions: {
+          SearchListIntent: CallbackAction<SearchListIntent>(
+            onInvoke: (_) {
+              _searchShortcut(
+                _selectedListId != null ? SearchScope.list : SearchScope.global,
+              );
+              return null;
+            },
+          ),
+          SearchAllIntent: CallbackAction<SearchAllIntent>(
+            onInvoke: (_) {
+              _searchShortcut(SearchScope.global);
+              return null;
+            },
+          ),
+        },
+        child: homePageFocusWrapper(child: _buildPage(context)),
+      ),
+    );
+  }
+
+  Widget _buildPage(BuildContext context) {
     final state = context.watch<AppState>();
     if (state.loading) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
@@ -353,7 +438,7 @@ class _HomePageState extends State<HomePage> {
           onPressed: () => _openSearch(
             _selectedListId != null ? SearchScope.list : SearchScope.global,
           ),
-          tooltip: _selectedListId != null ? 'Search this list' : 'Search',
+          tooltip: _searchTooltip(),
         ),
         if (state.syncing)
           const Padding(
@@ -408,7 +493,7 @@ class _HomePageState extends State<HomePage> {
             onPressed: () => _openSearch(
               _selectedListId != null ? SearchScope.list : SearchScope.global,
             ),
-            tooltip: _selectedListId != null ? 'Search this list' : 'Search',
+            tooltip: _searchTooltip(),
           ),
           if (state.syncing)
             const SizedBox(
@@ -425,6 +510,16 @@ class _HomePageState extends State<HomePage> {
         ],
       ),
     );
+  }
+
+  /// Label for the search button. The shortcut is only mentioned where there
+  /// is a keyboard to press it on.
+  String _searchTooltip() {
+    final label = _selectedListId != null ? 'Search this list' : 'Search';
+    if (_isMobile) return label;
+    final mod = defaultTargetPlatform == TargetPlatform.macOS ? '⌘' : 'Ctrl+';
+    return '$label ($mod'
+        'F)  •  Search all tasks (${mod}Shift+F)';
   }
 
   /// The search input, plus a chip to switch between searching the current
