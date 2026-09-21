@@ -177,13 +177,14 @@ class PanelSection extends StatelessWidget {
       children: [
         if (title != null)
           Padding(
-            // With actions, the right padding lines the 28px buttons up with
-            // the 32px count/menu boxes in the rows below: both are then
-            // centred 32px in from the panel's right edge.
+            // With actions, the right padding centres the buttons on the count
+            // column of the rows below, 40px in from the panel's right edge.
+            // An IconButton keeps a 40px minimum tap target regardless of the
+            // constraints it is given, so 20px of padding is what centres it.
             padding: EdgeInsets.fromLTRB(
               16,
               10,
-              headerActions.isEmpty ? 16 : 18,
+              headerActions.isEmpty ? 16 : 20,
               2,
             ),
             child: Row(
