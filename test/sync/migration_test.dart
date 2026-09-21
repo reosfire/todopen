@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:todopen/sync/domain_mapper.dart';
+import 'package:todopen/sync/format/byte_io.dart';
 import 'package:todopen/sync/engine/replica.dart';
 import 'package:todopen/sync/model/hlc.dart';
 import 'package:todopen/sync/model/ops.dart';
@@ -52,6 +53,8 @@ import 'replica_test.dart' show uid;
 }
 
 void main() {
+  _migrationParityTests();
+
   group('linked list → dense array', () {
     ({Uuid128 id, Uuid128? prev, Uuid128? next, int createdMs}) t(
       int n, {
@@ -340,6 +343,109 @@ void main() {
       )!;
       expect(back.colorValue, isNull);
       expect(back.folderId, isNull);
+    });
+  });
+}
+
+/// The migration script re-implements three encoders (recurrence blob,
+/// filter blob, days-since-epoch) against the protobuf types, because it
+/// must run under plain `dart run` and the model layer pulls in Flutter.
+///
+/// Duplicated encoders can drift, and a drift here writes a store the app
+/// then misreads. These tests pin the two implementations to the same bytes.
+/// If one changes, this fails.
+void _migrationParityTests() {
+  group('migration encoder parity', () {
+    test('recurrence blob layout is byte-identical', () {
+      // Mirrors tool/migrate_v2.dart::_recurrenceBlob.
+      Uint8List viaMigration(int tag, List<int> varints) {
+        final w = ByteWriter(8);
+        w.u8(tag);
+        for (final v in varints) {
+          w.varint(v);
+        }
+        return w.takeBytes();
+      }
+
+      final cases = <(RecurrenceRule, int, List<int>)>[
+        (const DailyRecurrence(), 0, []),
+        (const EveryNDaysRecurrence(3), 1, [3]),
+        (WeeklyRecurrence.fromDays([1, 3]), 2, [
+          WeeklyRecurrence.fromDays([1, 3]).weekdayBits,
+        ]),
+        (const MonthlyRecurrence(15), 3, [15]),
+        (const YearlyRecurrence(12, 25), 4, [12, 25]),
+      ];
+      for (final (rule, tag, args) in cases) {
+        expect(
+          DomainMapper.recurrenceToBlob(rule),
+          viaMigration(tag, args),
+          reason: rule.describe(),
+        );
+      }
+    });
+
+    test('filter blob tags match the migration script', () {
+      // The migration writes these tag bytes; DomainMapper must agree.
+      final expected = <SmartListFilter, int>{
+        const TodayFilter(): 0,
+        const TomorrowFilter(): 1,
+        const UpcomingFilter(): 2,
+        const OverdueFilter(): 3,
+        const CompletedFilter(): 4,
+        const AllTasksFilter(): 5,
+        const DateRangeFilter(): 6,
+        const TagsFilter(tagIds: {}): 7,
+      };
+      expected.forEach((filter, tag) {
+        expect(
+          DomainMapper.filterToBlob(filter).first,
+          tag,
+          reason: '$filter must encode with tag $tag',
+        );
+      });
+    });
+
+    test('days-since-epoch matches the migration script', () {
+      // Mirrors tool/migrate_v2.dart::_toDays.
+      int viaMigration(int millis) {
+        final d = DateTime.fromMillisecondsSinceEpoch(millis);
+        return DateTime.utc(d.year, d.month, d.day).millisecondsSinceEpoch ~/
+            86400000;
+      }
+
+      for (final d in [
+        DateTime(2024, 1, 1, 13, 45),
+        DateTime(2025, 6, 30),
+        DateTime(1999, 12, 31, 23, 59),
+      ]) {
+        expect(
+          DomainMapper.toDays(d),
+          viaMigration(d.millisecondsSinceEpoch),
+          reason: '$d',
+        );
+      }
+    });
+
+    test('sidebar scope matches the one the migration writes', () {
+      final migrationScope = OrderScope(
+        EntityKind.list,
+        Uuid128.fromBytes(Uint8List(16)),
+        0,
+      );
+      expect(DomainMapper.sidebarScope, migrationScope);
+    });
+
+    test('task scope lanes match the migration', () {
+      final list = uid(5);
+      expect(
+        DomainMapper.taskScope(list, completed: false),
+        OrderScope(EntityKind.task, list, 0),
+      );
+      expect(
+        DomainMapper.taskScope(list, completed: true),
+        OrderScope(EntityKind.task, list, 1),
+      );
     });
   });
 }

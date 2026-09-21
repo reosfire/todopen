@@ -26,11 +26,9 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
-import 'package:todopen/models/recurrence.dart';
-import 'package:todopen/models/smart_list.dart';
 import 'package:todopen/proto/models.pb.dart';
-import 'package:todopen/sync/domain_mapper.dart';
 import 'package:todopen/sync/engine/replica.dart';
+import 'package:todopen/sync/format/byte_io.dart';
 import 'package:todopen/sync/engine/sync_engine.dart';
 import 'package:todopen/sync/format/chunk.dart';
 import 'package:todopen/sync/format/manifest.dart';
@@ -164,9 +162,7 @@ Future<void> main(List<String> args) async {
           if (p.hasRecurrence()) {
             e.setField(
               TaskField.recurrence,
-              BlobValue(
-                DomainMapper.recurrenceToBlob(_recurrence(p.recurrence)),
-              ),
+              BlobValue(_recurrenceBlob(p.recurrence)),
               hlc,
             );
           }
@@ -184,10 +180,7 @@ Future<void> main(List<String> args) async {
             e.setField(
               TaskField.completedDates,
               DateSetValue({
-                for (final ms in p.completedDatesMs)
-                  DomainMapper.toDays(
-                    DateTime.fromMillisecondsSinceEpoch(ms.toInt()),
-                  ),
+                for (final ms in p.completedDatesMs) _toDays(ms.toInt()),
               }),
               hlc,
             );
@@ -272,7 +265,7 @@ Future<void> main(List<String> args) async {
           );
           e.setField(
             SmartListField.filter,
-            BlobValue(DomainMapper.filterToBlob(_filter(p.filter))),
+            BlobValue(_filterBlob(p.filter)),
             hlc,
           );
           replica.entities[(EntityKind.smartList, id)] = e;
@@ -297,7 +290,7 @@ Future<void> main(List<String> args) async {
       SetOrderOp(
         Hlc(DateTime.now().millisecondsSinceEpoch, counter++ & 0xFFFF,
             migrationDevice),
-        DomainMapper.taskScope(listId, completed: completed),
+        OrderScope(EntityKind.task, listId, completed ? 1 : 0),
         ordered.ids,
       ),
     );
@@ -335,7 +328,7 @@ Future<void> main(List<String> args) async {
     SetOrderOp(
       Hlc(DateTime.now().millisecondsSinceEpoch, counter++ & 0xFFFF,
           migrationDevice),
-      DomainMapper.sidebarScope,
+      OrderScope(EntityKind.list, _zeroUuid, 0),
       sidebar.map((s) => s.id).toList(),
     ),
   );
@@ -512,58 +505,75 @@ _Chain _walkChain(List<ProtoTask> tasks) {
 
 // ───── Proto → domain conversions ─────
 
-RecurrenceRule _recurrence(ProtoRecurrenceRule p) {
+/// Encode a v1 recurrence straight to the v2 blob.
+///
+/// Written against the proto rather than the domain model so this script
+/// stays runnable with plain `dart run`: the model layer imports
+/// package:flutter for its Color/IconData getters, which a console script
+/// cannot load. The byte layout must match DomainMapper.recurrenceToBlob.
+Uint8List _recurrenceBlob(ProtoRecurrenceRule p) {
+  final w = ByteWriter(8);
   switch (p.whichRule()) {
     case ProtoRecurrenceRule_Rule.daily:
-      return DailyRecurrence();
+      w.u8(0);
     case ProtoRecurrenceRule_Rule.everyNDays:
-      return EveryNDaysRecurrence(p.everyNDays.interval);
+      w.u8(1);
+      w.varint(p.everyNDays.interval);
     case ProtoRecurrenceRule_Rule.weekly:
-      return WeeklyRecurrence(p.weekly.weekdayBits);
+      w.u8(2);
+      w.varint(p.weekly.weekdayBits);
     case ProtoRecurrenceRule_Rule.monthly:
-      return MonthlyRecurrence(p.monthly.dayOfMonth);
+      w.u8(3);
+      w.varint(p.monthly.dayOfMonth);
     case ProtoRecurrenceRule_Rule.yearly:
-      return YearlyRecurrence(p.yearly.month, p.yearly.dayOfMonth);
+      w.u8(4);
+      w.varint(p.yearly.month);
+      w.varint(p.yearly.dayOfMonth);
     case ProtoRecurrenceRule_Rule.notSet:
-      return DailyRecurrence();
+      w.u8(0);
   }
+  return w.takeBytes();
 }
 
-SmartListFilter _filter(ProtoSmartListFilter p) {
+/// Must match DomainMapper.filterToBlob.
+Uint8List _filterBlob(ProtoSmartListFilter p) {
+  final w = ByteWriter(16);
   switch (p.whichFilter()) {
     case ProtoSmartListFilter_Filter.today:
-      return const TodayFilter();
+      w.u8(0);
     case ProtoSmartListFilter_Filter.tomorrow:
-      return const TomorrowFilter();
+      w.u8(1);
     case ProtoSmartListFilter_Filter.upcoming:
-      return const UpcomingFilter();
+      w.u8(2);
     case ProtoSmartListFilter_Filter.overdue:
-      return const OverdueFilter();
+      w.u8(3);
     case ProtoSmartListFilter_Filter.completed:
-      return const CompletedFilter();
+      w.u8(4);
     case ProtoSmartListFilter_Filter.all:
-      return const AllTasksFilter();
-    case ProtoSmartListFilter_Filter.dateRange:
-      return DateRangeFilter(
-        dateFrom: p.dateRange.hasDateFrom
-            ? DateTime.fromMillisecondsSinceEpoch(
-                p.dateRange.dateFromMs.toInt(),
-              )
-            : null,
-        dateTo: p.dateRange.hasDateTo
-            ? DateTime.fromMillisecondsSinceEpoch(p.dateRange.dateToMs.toInt())
-            : null,
-      );
-    case ProtoSmartListFilter_Filter.tags:
-      return TagsFilter(
-        tagIds: {
-          for (final t in p.tags.tagIds)
-            Uuid128.fromBytes(Uint8List.fromList(t)),
-        },
-      );
     case ProtoSmartListFilter_Filter.notSet:
-      return const AllTasksFilter();
+      w.u8(5);
+    case ProtoSmartListFilter_Filter.dateRange:
+      w.u8(6);
+      final hasFrom = p.dateRange.hasDateFrom;
+      final hasTo = p.dateRange.hasDateTo;
+      w.u8((hasFrom ? 1 : 0) | (hasTo ? 2 : 0));
+      if (hasFrom) w.svarint(p.dateRange.dateFromMs.toInt());
+      if (hasTo) w.svarint(p.dateRange.dateToMs.toInt());
+    case ProtoSmartListFilter_Filter.tags:
+      w.u8(7);
+      w.varint(p.tags.tagIds.length);
+      for (final t in p.tags.tagIds) {
+        w.bytes(Uint8List.fromList(t));
+      }
   }
+  return w.takeBytes();
+}
+
+/// Days since epoch, matching DomainMapper.toDays.
+int _toDays(int millis) {
+  final d = DateTime.fromMillisecondsSinceEpoch(millis);
+  return DateTime.utc(d.year, d.month, d.day).millisecondsSinceEpoch ~/
+      86400000;
 }
 
 // ───── Helpers ─────
