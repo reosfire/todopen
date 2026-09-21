@@ -51,6 +51,10 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   bool get syncing => _syncing;
   bool get isSignedIn => dropboxService.isSignedIn;
 
+  /// True when the Dropbox session expired and could not be renewed. Local
+  /// edits are safe and still queued; they will upload after a new sign-in.
+  bool get authExpired => dropboxService.authExpired;
+
   /// Ops made locally but not yet accepted by the server.
   int get pendingChanges => _initialised ? _engine.pendingOpCount : 0;
 
@@ -141,6 +145,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     _loading = false;
     notifyListeners();
 
+    dropboxService.onAuthLost = _handleAuthLost;
     await dropboxService.init();
     _initDeepLinks();
     WidgetsBinding.instance.addObserver(this);
@@ -234,6 +239,10 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
         }
         await _persistLocal();
         await _saveSyncState();
+      } on DropboxAuthException catch (e) {
+        // Auth is gone; _handleAuthLost has already paused sync. Pending ops
+        // stay queued and upload once the user signs in again.
+        debugPrint('Sync stopped: $e');
       } catch (e) {
         debugPrint('Sync failed: $e');
       } finally {
@@ -601,6 +610,17 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
+  /// Dropbox authentication is gone for good. Stop the retry loops and let
+  /// the UI prompt for a new sign-in — previously this surfaced only as
+  /// repeated console errors while sync sat dead.
+  void _handleAuthLost() {
+    debugPrint('Dropbox authentication lost — sync paused until re-sign-in.');
+    _stopPolling();
+    _pushTimer?.cancel();
+    _syncing = false;
+    notifyListeners();
+  }
+
   Future<void> signOut() async {
     _stopPolling();
     await dropboxService.signOut();
@@ -617,6 +637,8 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     try {
       await _engine.sync();
       await _saveSyncState();
+    } on DropboxAuthException catch (e) {
+      debugPrint('Force upload stopped: $e');
     } catch (e) {
       debugPrint('Force upload failed: $e');
     }
@@ -641,6 +663,8 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
       _ensureDefaults();
       await _persistLocal();
       await _saveSyncState();
+    } on DropboxAuthException catch (e) {
+      debugPrint('Force download stopped: $e');
     } catch (e) {
       debugPrint('Force download failed: $e');
     }
@@ -667,6 +691,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   /// Longpoll Dropbox and sync whenever it reports a change.
   Future<void> _pollLoop() async {
     while (_polling && dropboxService.isSignedIn) {
+      if (dropboxService.authExpired) break;
       try {
         _longpollCursor ??= await dropboxService.getLatestCursor();
         if (_longpollCursor == null) {
@@ -685,6 +710,10 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
         }
         _longpollCursor = await dropboxService.getLatestCursor();
         if (changed) await _syncNow();
+      } on DropboxAuthException catch (e) {
+        // Re-signing in is the only fix, so stop rather than retry forever.
+        debugPrint('Poll loop stopped: $e');
+        break;
       } catch (e) {
         debugPrint('Poll loop error: $e');
         _longpollCursor = null;

@@ -24,21 +24,37 @@ class SyncSettingsPage extends StatelessWidget {
                   Row(
                     children: [
                       Icon(
-                        state.isSignedIn ? Icons.cloud_done : Icons.cloud_off,
+                        state.authExpired
+                            ? Icons.cloud_off
+                            : (state.isSignedIn
+                                  ? Icons.cloud_done
+                                  : Icons.cloud_off),
                         size: 32,
-                        color: state.isSignedIn ? Colors.green : Colors.grey,
+                        color: state.authExpired
+                            ? Colors.orange
+                            : (state.isSignedIn ? Colors.green : Colors.grey),
                       ),
                       const SizedBox(width: 12),
                       Expanded(
                         child: Text(
-                          state.isSignedIn
-                              ? 'Connected to Dropbox'
-                              : 'Not connected',
+                          state.authExpired
+                              ? 'Dropbox sign-in expired'
+                              : (state.isSignedIn
+                                    ? 'Connected to Dropbox'
+                                    : 'Not connected'),
                           style: Theme.of(context).textTheme.titleMedium,
                         ),
                       ),
                     ],
                   ),
+                  if (state.authExpired) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      'Sync is paused. Your changes are saved on this device '
+                      'and will upload once you reconnect.',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
                   const SizedBox(height: 16),
                   if (!state.isSignedIn)
                     FilledButton.icon(
