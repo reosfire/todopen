@@ -44,8 +44,6 @@ jobs:
       - run: >
           flutter build apk
           --release
-          --no-tree-shake-icons
-          --shrink
           --obfuscate
           --split-debug-info=build/debug-info
 

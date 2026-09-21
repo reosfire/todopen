@@ -420,7 +420,18 @@ class SmartList {
     required this.filter,
   });
 
-  IconData get icon => IconData(iconCodePoint, fontFamily: 'MaterialIcons');
+  /// Icons a smart list can use, keyed by the code point persisted in the
+  /// database and sent over sync. Constructing IconData from a runtime int
+  /// would defeat icon tree shaking, so every icon must be a const listed
+  /// here; unknown code points (an older or newer client) fall back.
+  static const _iconByCodePoint = <int, IconData>{
+    0xe0c8: Icons.auto_awesome,
+    0xf06bb: Icons.today,
+    0xf0504: Icons.wb_sunny_outlined,
+    0xf07dc: Icons.upcoming,
+  };
+
+  IconData get icon => _iconByCodePoint[iconCodePoint] ?? Icons.auto_awesome;
   Color get color => Color(colorValue);
 }
 
