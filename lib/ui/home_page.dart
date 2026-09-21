@@ -717,18 +717,13 @@ class _HomePageState extends State<HomePage> {
       ...builtInSmartLists.map((sl) {
         final count = sl.filter.countTasks(state.tasks);
         return ListTile(
+          contentPadding: const EdgeInsets.only(
+            left: 16,
+            right: kPanelTrailingInset,
+          ),
           leading: Icon(sl.icon, color: sl.color),
           title: Text(sl.name),
-          trailing: count > 0
-              ? SizedBox(
-                  width: 24,
-                  child: Text(
-                    '$count',
-                    style: Theme.of(context).textTheme.bodySmall,
-                    textAlign: TextAlign.center,
-                  ),
-                )
-              : null,
+          trailing: PanelTrailing(count: count),
           selected: _selectedSmartListId == sl.id,
           onTap: () => _selectSmartList(sl.id),
           dense: true,
@@ -739,31 +734,18 @@ class _HomePageState extends State<HomePage> {
         final count = sl.filter.countTasks(state.tasks);
         return _HoverTrailingTile(
           child: (isHovered) => ListTile(
+            contentPadding: const EdgeInsets.only(
+              left: 16,
+              right: kPanelTrailingInset,
+            ),
             leading: Icon(sl.icon, color: sl.color),
             title: Text(sl.name),
-            trailing: SizedBox(
-              width: 24,
-              height: 32,
-              child: isHovered
-                  ? IconButton(
-                      icon: const Icon(Icons.more_horiz, size: 18),
-                      onPressed: () => _showSmartListMenu(context, state, sl),
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints.tightFor(
-                        width: 24,
-                        height: 32,
-                      ),
-                      visualDensity: VisualDensity.compact,
-                    )
-                  : count > 0
-                  ? Center(
-                      child: Text(
-                        '$count',
-                        style: Theme.of(context).textTheme.bodySmall,
-                        textAlign: TextAlign.center,
-                      ),
-                    )
-                  : const SizedBox.shrink(),
+            trailing: PanelTrailing(
+              count: count,
+              showMenu: isHovered,
+              menuButton: PanelMenuButton(
+                onPressed: () => _showSmartListMenu(context, state, sl),
+              ),
             ),
             selected: _selectedSmartListId == sl.id,
             onTap: () => _selectSmartList(sl.id),
@@ -891,29 +873,18 @@ class _HomePageState extends State<HomePage> {
             dense: true,
             shape: const Border(),
             collapsedShape: const Border(),
-            trailing: SizedBox(
-              width: 24,
-              height: 32,
-              child: isHovered
-                  ? IconButton(
-                      icon: const Icon(Icons.more_horiz, size: 18),
-                      onPressed: () => _showFolderMenu(context, state, folder),
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints.tightFor(
-                        width: 24,
-                        height: 32,
-                      ),
-                      visualDensity: VisualDensity.compact,
-                    )
-                  : folderListCount > 0
-                  ? Center(
-                      child: Text(
-                        '$folderListCount',
-                        style: Theme.of(context).textTheme.bodySmall,
-                        textAlign: TextAlign.center,
-                      ),
-                    )
-                  : const SizedBox.shrink(),
+            // ExpansionTile pads itself 16 by default; the rows use
+            // kPanelTrailingInset, so it has to be set explicitly to match.
+            tilePadding: const EdgeInsets.only(
+              left: 16,
+              right: kPanelTrailingInset,
+            ),
+            trailing: PanelTrailing(
+              count: folderListCount,
+              showMenu: isHovered,
+              menuButton: PanelMenuButton(
+                onPressed: () => _showFolderMenu(context, state, folder),
+              ),
             ),
             children: [
               ReorderableListView(
@@ -1040,32 +1011,18 @@ class _HomePageState extends State<HomePage> {
       key: key,
       child: (isHovered) {
         final tile = ListTile(
-          contentPadding: EdgeInsets.only(left: 16 + leadingIndent, right: 12),
+          contentPadding: EdgeInsets.only(
+            left: 16 + leadingIndent,
+            right: kPanelTrailingInset,
+          ),
           leading: Icon(Icons.list, color: list.color, size: 20),
           title: Text(list.name),
-          trailing: SizedBox(
-            width: 24,
-            height: 32,
-            child: isHovered
-                ? IconButton(
-                    icon: const Icon(Icons.more_horiz, size: 18),
-                    onPressed: () => _showListMenu(context, state, list),
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints.tightFor(
-                      width: 24,
-                      height: 32,
-                    ),
-                    visualDensity: VisualDensity.compact,
-                  )
-                : count > 0
-                ? Center(
-                    child: Text(
-                      '$count',
-                      style: Theme.of(context).textTheme.bodySmall,
-                      textAlign: TextAlign.center,
-                    ),
-                  )
-                : const SizedBox.shrink(),
+          trailing: PanelTrailing(
+            count: count,
+            showMenu: isHovered,
+            menuButton: PanelMenuButton(
+              onPressed: () => _showListMenu(context, state, list),
+            ),
           ),
           selected: _selectedListId == list.id,
           dense: true,
@@ -1377,12 +1334,22 @@ class _SectionHeader extends StatelessWidget {
       ),
     );
     return Padding(
-      // See [PanelSection]: the same right padding puts the action button over
-      // the count column of the rows below.
-      padding: EdgeInsets.fromLTRB(16, 16, trailing == null ? 16 : 26, 4),
+      // See [PanelSection]: the action sits under the same right inset as the
+      // rows, in a column-width box, so it lines up with the counts below.
+      padding: EdgeInsets.fromLTRB(
+        16,
+        16,
+        trailing == null ? 16 : kPanelTrailingInset,
+        4,
+      ),
       child: trailing == null
           ? label
-          : Row(children: [Expanded(child: label), trailing]),
+          : Row(
+              children: [
+                Expanded(child: label),
+                PanelHeaderAction(child: trailing),
+              ],
+            ),
     );
   }
 }

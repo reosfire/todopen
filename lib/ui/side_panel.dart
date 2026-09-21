@@ -1,5 +1,110 @@
 import 'package:flutter/material.dart';
 
+// ───── The trailing column ─────
+//
+// Every side-panel row ends in the same slot: a task count, or the "…" menu
+// while the row is hovered. The section headers' "+" button sits in that same
+// column. Alignment kept breaking because each row type re-derived the
+// geometry by hand, and ListTile, ExpansionTile and the header Row all have
+// different defaults. The three constants below are the single source of
+// truth; nothing else may hard-code these numbers.
+
+/// Width of the trailing slot. Wide enough for a three-digit count.
+const double kPanelTrailingWidth = 24;
+
+/// Distance from the panel's right edge to the outer edge of that slot.
+///
+/// Applied explicitly to every row, overriding the differing defaults of
+/// ListTile (16) and ExpansionTile (16), so all row types line up.
+const double kPanelTrailingInset = 12;
+
+/// A header action ("+") sized to the trailing column.
+///
+/// The header used to be padded by a hand-tuned number so the button would
+/// land on the column, which never survived a change to either. Wrapping the
+/// button in a box exactly as wide as the column, under the same right inset
+/// as the rows, makes the alignment structural: the button centres because
+/// the box does, whatever padding the IconButton keeps inside itself.
+class PanelHeaderAction extends StatelessWidget {
+  final Widget child;
+
+  const PanelHeaderAction({super.key, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: kPanelTrailingWidth,
+      child: Center(child: child),
+    );
+  }
+}
+
+/// The trailing slot of a side-panel row.
+///
+/// Rows pass the count and, when they have a context menu, the hover state and
+/// the menu button. Keeping both cases in one widget is what guarantees the
+/// number and the "…" occupy exactly the same box.
+class PanelTrailing extends StatelessWidget {
+  /// Shown when the row is not hovered. Zero renders nothing.
+  final int count;
+
+  /// Whether to show [menuButton] in place of the count.
+  final bool showMenu;
+
+  /// The row's context-menu button, if it has one.
+  final Widget? menuButton;
+
+  const PanelTrailing({
+    super.key,
+    required this.count,
+    this.showMenu = false,
+    this.menuButton,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final menu = menuButton;
+    return SizedBox(
+      width: kPanelTrailingWidth,
+      height: kPanelTrailingWidth,
+      child: showMenu && menu != null
+          ? Center(child: menu)
+          : count > 0
+          ? Center(
+              child: Text(
+                '$count',
+                style: Theme.of(context).textTheme.bodySmall,
+                textAlign: TextAlign.center,
+              ),
+            )
+          : const SizedBox.shrink(),
+    );
+  }
+}
+
+/// The context-menu button used inside [PanelTrailing], sized to the column.
+class PanelMenuButton extends StatelessWidget {
+  final VoidCallback onPressed;
+  final String? tooltip;
+
+  const PanelMenuButton({super.key, required this.onPressed, this.tooltip});
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      icon: const Icon(Icons.more_horiz, size: 18),
+      onPressed: onPressed,
+      tooltip: tooltip,
+      padding: EdgeInsets.zero,
+      constraints: const BoxConstraints.tightFor(
+        width: kPanelTrailingWidth,
+        height: kPanelTrailingWidth,
+      ),
+      visualDensity: VisualDensity.compact,
+    );
+  }
+}
+
 /// A drag handle that sits between two stacked sections of the side panel.
 ///
 /// The gesture reports a delta in logical pixels; the owner decides how much
@@ -194,16 +299,12 @@ class PanelSection extends StatelessWidget {
       children: [
         if (title != null)
           Padding(
-            // With actions, the right padding puts the buttons over the count
-            // column of the rows below. The value is larger than it looks like
-            // it should be because an IconButton keeps a 40px minimum tap
-            // target whatever constraints it is given, and the panel's resize
-            // handle takes width from the rows but not from this row; 26 is
-            // what measures as aligned on screen.
+            // Actions sit under the same right inset as the rows, each in a
+            // column-width box, so they line up with the counts below.
             padding: EdgeInsets.fromLTRB(
               16,
               10,
-              headerActions.isEmpty ? 16 : 26,
+              headerActions.isEmpty ? 16 : kPanelTrailingInset,
               2,
             ),
             child: Row(
@@ -217,7 +318,9 @@ class PanelSection extends StatelessWidget {
                     ),
                   ),
                 ),
-                ...headerActions,
+                ...headerActions.map(
+                  (a) => PanelHeaderAction(child: a),
+                ),
               ],
             ),
           ),
