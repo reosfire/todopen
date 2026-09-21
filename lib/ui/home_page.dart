@@ -567,7 +567,9 @@ class _HomePageState extends State<HomePage> {
           // the action button is the tallest thing in it at IconButton's 40px
           // minimum tap target.
           const headerHeight = 52.0;
-          const handleHeight = 9.0; // SectionResizeHandle
+          // One SectionResizeHandle plus two SectionDividers; all three are
+          // the same height.
+          const handleHeight = 9.0;
 
           final fixed =
               searchHeight +
@@ -591,12 +593,9 @@ class _HomePageState extends State<HomePage> {
                 height: searchHeight,
                 child: _buildSearchTile(closeDrawer: false),
               ),
-              SectionResizeHandle(
-                // Nothing above smart lists can resize, so this handle moves
-                // the boundary the same way the one below it does.
-                onDrag: (d) => _resizeSections(-d, flexible),
-                onDragEnd: _savePanelGeometry,
-              ),
+              // Nothing above smart lists can resize, so this boundary is a
+              // plain divider rather than a handle.
+              const SectionDivider(),
               SizedBox(
                 height: _smartListsHeight + headerHeight,
                 child: PanelSection(
@@ -633,12 +632,9 @@ class _HomePageState extends State<HomePage> {
                   ),
                 ),
               ),
-              SectionResizeHandle(
-                // Below the lists section: dragging down grows LISTS at the
-                // expense of SMART LISTS above it.
-                onDrag: (d) => _resizeSections(-d, flexible),
-                onDragEnd: _savePanelGeometry,
-              ),
+              // The management tiles are a fixed height, so this boundary has
+              // nothing to trade against: a plain divider, not a handle.
+              const SectionDivider(),
               SizedBox(
                 height: managementHeight,
                 child: ListView(
@@ -725,7 +721,7 @@ class _HomePageState extends State<HomePage> {
           title: Text(sl.name),
           trailing: count > 0
               ? SizedBox(
-                  width: 32,
+                  width: 24,
                   child: Text(
                     '$count',
                     style: Theme.of(context).textTheme.bodySmall,
@@ -746,7 +742,7 @@ class _HomePageState extends State<HomePage> {
             leading: Icon(sl.icon, color: sl.color),
             title: Text(sl.name),
             trailing: SizedBox(
-              width: 32,
+              width: 24,
               height: 32,
               child: isHovered
                   ? IconButton(
@@ -754,7 +750,7 @@ class _HomePageState extends State<HomePage> {
                       onPressed: () => _showSmartListMenu(context, state, sl),
                       padding: EdgeInsets.zero,
                       constraints: const BoxConstraints.tightFor(
-                        width: 32,
+                        width: 24,
                         height: 32,
                       ),
                       visualDensity: VisualDensity.compact,
@@ -896,7 +892,7 @@ class _HomePageState extends State<HomePage> {
             shape: const Border(),
             collapsedShape: const Border(),
             trailing: SizedBox(
-              width: 32,
+              width: 24,
               height: 32,
               child: isHovered
                   ? IconButton(
@@ -904,7 +900,7 @@ class _HomePageState extends State<HomePage> {
                       onPressed: () => _showFolderMenu(context, state, folder),
                       padding: EdgeInsets.zero,
                       constraints: const BoxConstraints.tightFor(
-                        width: 32,
+                        width: 24,
                         height: 32,
                       ),
                       visualDensity: VisualDensity.compact,
@@ -1044,11 +1040,11 @@ class _HomePageState extends State<HomePage> {
       key: key,
       child: (isHovered) {
         final tile = ListTile(
-          contentPadding: EdgeInsets.only(left: 16 + leadingIndent, right: 24),
+          contentPadding: EdgeInsets.only(left: 16 + leadingIndent, right: 12),
           leading: Icon(Icons.list, color: list.color, size: 20),
           title: Text(list.name),
           trailing: SizedBox(
-            width: 32,
+            width: 24,
             height: 32,
             child: isHovered
                 ? IconButton(
@@ -1056,7 +1052,7 @@ class _HomePageState extends State<HomePage> {
                     onPressed: () => _showListMenu(context, state, list),
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints.tightFor(
-                      width: 32,
+                      width: 24,
                       height: 32,
                     ),
                     visualDensity: VisualDensity.compact,
@@ -1383,7 +1379,7 @@ class _SectionHeader extends StatelessWidget {
     return Padding(
       // See [PanelSection]: the same right padding puts the action button over
       // the count column of the rows below.
-      padding: EdgeInsets.fromLTRB(16, 16, trailing == null ? 16 : 30, 4),
+      padding: EdgeInsets.fromLTRB(16, 16, trailing == null ? 16 : 26, 4),
       child: trailing == null
           ? label
           : Row(children: [Expanded(child: label), trailing]),

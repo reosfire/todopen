@@ -82,6 +82,23 @@ class _SectionResizeHandleState extends State<SectionResizeHandle> {
   }
 }
 
+/// A plain divider between two side-panel sections whose boundary is not
+/// draggable. It occupies the same 9px as [SectionResizeHandle] and draws the
+/// same resting line, so swapping one for the other does not move anything.
+class SectionDivider extends StatelessWidget {
+  const SectionDivider({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 9,
+      child: Center(
+        child: Container(height: 1, color: Theme.of(context).dividerColor),
+      ),
+    );
+  }
+}
+
 /// The vertical handle on the side panel's outer edge, for widening and
 /// narrowing the whole panel.
 class PanelResizeHandle extends StatefulWidget {
@@ -181,12 +198,12 @@ class PanelSection extends StatelessWidget {
             // column of the rows below. The value is larger than it looks like
             // it should be because an IconButton keeps a 40px minimum tap
             // target whatever constraints it is given, and the panel's resize
-            // handle takes width from the rows but not from this row; 30 is
+            // handle takes width from the rows but not from this row; 26 is
             // what measures as aligned on screen.
             padding: EdgeInsets.fromLTRB(
               16,
               10,
-              headerActions.isEmpty ? 16 : 30,
+              headerActions.isEmpty ? 16 : 26,
               2,
             ),
             child: Row(
