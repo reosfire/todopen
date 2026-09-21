@@ -20,6 +20,17 @@ import 'model/ops.dart';
 /// small: retyping one character in a title uploads a title op, not the
 /// whole task.
 class DomainMapper {
+  // ───── Colours ─────
+
+  /// ARGB colours are conceptually unsigned 32-bit, but Flutter and older
+  /// builds of this app can hand back a sign-extended value (-14235942 for
+  /// 0xFF26C6DA). Normalise on the way in and out so a negative never
+  /// reaches `Color(...)`, and so the same colour always encodes identically
+  /// — otherwise two devices could disagree byte-for-byte about an
+  /// unchanged field.
+  static int _colorIn(int v) => v & 0xFFFFFFFF;
+  static int _colorOut(int v) => v & 0xFFFFFFFF;
+
   // ───── Dates ─────
 
   /// Day-resolution dates are stored as days since epoch, which delta-encode
@@ -173,7 +184,10 @@ class DomainMapper {
     return TaskList(
       id: e.id,
       name: e.stringField(ListField.name),
-      colorValue: e.intFieldOrNull(ListField.color),
+      colorValue: switch (e.intFieldOrNull(ListField.color)) {
+        final v? => _colorOut(v),
+        null => null,
+      },
       folderId: e.uuidField(ListField.folderId),
     );
   }
@@ -188,7 +202,7 @@ class DomainMapper {
     return Tag(
       id: e.id,
       name: e.stringField(TagField.name),
-      colorValue: e.intField(TagField.color, 0xFF42A5F5),
+      colorValue: _colorOut(e.intField(TagField.color, 0xFF42A5F5)),
     );
   }
 
@@ -198,7 +212,7 @@ class DomainMapper {
       id: e.id,
       name: e.stringField(SmartListField.name),
       iconCodePoint: e.intField(SmartListField.icon, 0xe0c8),
-      colorValue: e.intField(SmartListField.color, 0xFFAB47BC),
+      colorValue: _colorOut(e.intField(SmartListField.color, 0xFFAB47BC)),
       filter: filterFromBlob(e.blobField(SmartListField.filter)),
     );
   }
@@ -347,7 +361,9 @@ class DomainMapper {
     set(ListField.name, StringValue(l.name), prev == null || prev.name != l.name);
     set(
       ListField.color,
-      l.colorValue == null ? const NullValue() : IntValue(l.colorValue!),
+      l.colorValue == null
+          ? const NullValue()
+          : IntValue(_colorIn(l.colorValue!)),
       prev == null || prev.colorValue != l.colorValue,
     );
     set(
@@ -402,7 +418,7 @@ class DomainMapper {
             StringValue(t.name)),
       if (prev == null || prev.colorValue != t.colorValue)
         SetFieldOp(hlc, EntityKind.tag, t.id, TagField.color,
-            IntValue(t.colorValue)),
+            IntValue(_colorIn(t.colorValue))),
     ];
   }
 
@@ -445,7 +461,7 @@ class DomainMapper {
     );
     set(
       SmartListField.color,
-      IntValue(s.colorValue),
+      IntValue(_colorIn(s.colorValue)),
       prev == null || prev.colorValue != s.colorValue,
     );
     final nextBlob = filterToBlob(s.filter);

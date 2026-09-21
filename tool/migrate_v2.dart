@@ -16,6 +16,10 @@
 //
 // Get a token from https://www.dropbox.com/developers/apps → your app →
 // "Generated access token". It only needs to last for this one run.
+//
+// This is the last thing in the project that reads the v1 protobuf format.
+// Once the migration has run and been verified, this file, lib/proto/,
+// lib/builders.dart, proto/, and the `protobuf` dependency can all go.
 
 import 'dart:convert';
 import 'dart:io';
