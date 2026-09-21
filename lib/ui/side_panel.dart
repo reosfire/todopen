@@ -177,10 +177,13 @@ class PanelSection extends StatelessWidget {
       children: [
         if (title != null)
           Padding(
+            // With actions, the right padding lines the 28px buttons up with
+            // the 32px count/menu boxes in the rows below: both are then
+            // centred 32px in from the panel's right edge.
             padding: EdgeInsets.fromLTRB(
               16,
               10,
-              headerActions.isEmpty ? 16 : 6,
+              headerActions.isEmpty ? 16 : 18,
               2,
             ),
             child: Row(

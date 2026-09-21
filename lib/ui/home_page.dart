@@ -520,15 +520,25 @@ class _HomePageState extends State<HomePage> {
                 const Divider(),
 
                 // Smart lists
-                const _SectionHeader('SMART LISTS'),
+                _SectionHeader(
+                  'SMART LISTS',
+                  action: _sectionAddButton(
+                    tooltip: 'Add Smart List',
+                    onPressed: () => _showSmartListEditor(context, state),
+                  ),
+                ),
                 ..._buildSmartListItems(state),
-                _buildAddSmartListTile(state),
                 const Divider(),
 
                 // Folders and lists
-                const _SectionHeader('LISTS'),
+                _SectionHeader(
+                  'LISTS',
+                  action: _sectionAddButton(
+                    tooltip: 'Add List or Folder',
+                    onPressed: () => _showAddListMenu(context, state),
+                  ),
+                ),
                 ..._buildFolderAndListItems(state),
-                ..._buildAddListTiles(state),
                 const Divider(),
 
                 // Bottom actions
@@ -552,17 +562,17 @@ class _HomePageState extends State<HomePage> {
           // real row metrics so the two scrollers get exactly what is left.
           final tileHeight = _denseTileHeight(context);
           final searchHeight = tileHeight;
-          final addListsHeight = tileHeight * 2;
           final managementHeight = tileHeight * 2;
-          const headerHeight = 26.0; // section label
+          // Section label row: PanelSection pads it 10 above and 2 below, and
+          // the 28px action button is the tallest thing in it.
+          const headerHeight = 40.0;
           const handleHeight = 9.0; // SectionResizeHandle
 
           final fixed =
               searchHeight +
-              addListsHeight +
               managementHeight +
               headerHeight * 2 +
-              handleHeight * 4;
+              handleHeight * 3;
           final flexible = constraints.maxHeight - fixed;
 
           // Too short to honour both minimums: fall back to a single scroller
@@ -591,15 +601,8 @@ class _HomePageState extends State<HomePage> {
                 child: PanelSection(
                   header: 'SMART LISTS',
                   headerActions: [
-                    IconButton(
-                      icon: const Icon(Icons.add, size: 18),
+                    _sectionAddButton(
                       tooltip: 'Add Smart List',
-                      visualDensity: VisualDensity.compact,
-                      constraints: const BoxConstraints.tightFor(
-                        width: 28,
-                        height: 28,
-                      ),
-                      padding: EdgeInsets.zero,
                       onPressed: () => _showSmartListEditor(context, state),
                     ),
                   ],
@@ -617,6 +620,12 @@ class _HomePageState extends State<HomePage> {
                 height: _listsHeight + headerHeight,
                 child: PanelSection(
                   header: 'LISTS',
+                  headerActions: [
+                    _sectionAddButton(
+                      tooltip: 'Add List or Folder',
+                      onPressed: () => _showAddListMenu(context, state),
+                    ),
+                  ],
                   child: ListView(
                     padding: EdgeInsets.zero,
                     children: _buildFolderAndListItems(state),
@@ -626,19 +635,6 @@ class _HomePageState extends State<HomePage> {
               SectionResizeHandle(
                 // Below the lists section: dragging down grows LISTS at the
                 // expense of SMART LISTS above it.
-                onDrag: (d) => _resizeSections(-d, flexible),
-                onDragEnd: _savePanelGeometry,
-              ),
-              SizedBox(
-                height: addListsHeight,
-                child: ListView(
-                  padding: EdgeInsets.zero,
-                  children: _buildAddListTiles(state),
-                ),
-              ),
-              SectionResizeHandle(
-                // Same boundary again: the sections below it are sized by
-                // their content, so this is the only height there is to give.
                 onDrag: (d) => _resizeSections(-d, flexible),
                 onDragEnd: _savePanelGeometry,
               ),
@@ -781,30 +777,51 @@ class _HomePageState extends State<HomePage> {
     ];
   }
 
-  Widget _buildAddSmartListTile(AppState state) {
-    return ListTile(
-      leading: const Icon(Icons.add, size: 20),
-      title: const Text('Add Smart List'),
-      dense: true,
-      onTap: () => _showSmartListEditor(context, state),
+  /// The "+" button in a section header. It is 28px wide inside a header row
+  /// padded 18px on the right, which centres it on the 32px count column of
+  /// the rows below.
+  Widget _sectionAddButton({
+    required String tooltip,
+    required VoidCallback onPressed,
+  }) {
+    return IconButton(
+      icon: const Icon(Icons.add, size: 18),
+      tooltip: tooltip,
+      visualDensity: VisualDensity.compact,
+      constraints: const BoxConstraints.tightFor(width: 28, height: 28),
+      padding: EdgeInsets.zero,
+      onPressed: onPressed,
     );
   }
 
-  List<Widget> _buildAddListTiles(AppState state) {
-    return [
-      ListTile(
-        leading: const Icon(Icons.add, size: 20),
-        title: const Text('Add List'),
-        dense: true,
-        onTap: () => _showListEditor(context, state, null),
+  /// LISTS has two things to add, so its header button offers the choice.
+  void _showAddListMenu(BuildContext ctx, AppState state) {
+    showModalBottomSheet(
+      context: ctx,
+      builder: (_) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.list),
+              title: const Text('New List'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _showListEditor(ctx, state, null);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.create_new_folder_outlined),
+              title: const Text('New Folder'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _showFolderEditor(ctx, state, null);
+              },
+            ),
+          ],
+        ),
       ),
-      ListTile(
-        leading: const Icon(Icons.create_new_folder_outlined, size: 20),
-        title: const Text('Add Folder'),
-        dense: true,
-        onTap: () => _showFolderEditor(context, state, null),
-      ),
-    ];
+    );
   }
 
   List<Widget> _buildManagementTiles(AppState state) {
@@ -1027,7 +1044,7 @@ class _HomePageState extends State<HomePage> {
       key: key,
       child: (isHovered) {
         final tile = ListTile(
-          contentPadding: EdgeInsets.only(left: 16 + leadingIndent, right: 24),
+          contentPadding: EdgeInsets.only(left: 16 + leadingIndent, right: 16),
           leading: Icon(Icons.list, color: list.color, size: 20),
           title: Text(list.name),
           trailing: SizedBox(
@@ -1347,19 +1364,29 @@ class _HomePageState extends State<HomePage> {
 
 class _SectionHeader extends StatelessWidget {
   final String title;
-  const _SectionHeader(this.title);
+
+  /// Optional trailing widget (e.g. an "add" button).
+  final Widget? action;
+
+  const _SectionHeader(this.title, {this.action});
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
-      child: Text(
-        title,
-        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-          color: Theme.of(context).colorScheme.onSurfaceVariant,
-          letterSpacing: 1.2,
-        ),
+    final trailing = action;
+    final label = Text(
+      title,
+      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+        color: Theme.of(context).colorScheme.onSurfaceVariant,
+        letterSpacing: 1.2,
       ),
+    );
+    return Padding(
+      // See [PanelSection]: 18px on the right centres a 28px action button on
+      // the 32px count column of the rows below.
+      padding: EdgeInsets.fromLTRB(16, 16, trailing == null ? 16 : 18, 4),
+      child: trailing == null
+          ? label
+          : Row(children: [Expanded(child: label), trailing]),
     );
   }
 }
