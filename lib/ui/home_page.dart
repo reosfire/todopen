@@ -17,6 +17,7 @@ import 'smart_list_editor_dialog.dart';
 import 'tag_manager_dialog.dart';
 import 'sync_settings_page.dart';
 import 'search_view.dart';
+import 'accent_theme.dart';
 
 /// Whether a search covers every task or only the selected list.
 enum SearchScope { global, list }
@@ -134,6 +135,18 @@ class _HomePageState extends State<HomePage> {
     return id;
   }
 
+  /// The color the content area is themed around: the selected list's own
+  /// color, or the smart list's. Null means "leave the app theme alone".
+  Color? _accentColor(AppState state) {
+    if (_selectedSmartListId != null) {
+      return state.smartListById(_selectedSmartListId!)?.color;
+    }
+    if (_selectedListId != null) {
+      return state.listById(_selectedListId!)?.color;
+    }
+    return null;
+  }
+
   void _selectList(Uuid128 id) {
     setState(() {
       _selectedListId = id;
@@ -180,13 +193,25 @@ class _HomePageState extends State<HomePage> {
     }
 
     final drawer = _buildDrawer(state);
-    final body = _buildBody(state);
+    // Only the content area picks up the accent; the drawer shows every list
+    // at once, so tinting it to one of them would be misleading.
+    final accent = _accentColor(state);
 
     if (_isNarrow) {
-      return Scaffold(
-        appBar: _buildAppBar(state),
-        drawer: Drawer(child: drawer),
-        body: body,
+      // The drawer is built under the app theme and handed in from outside the
+      // accented subtree, so it keeps the app's own colors.
+      final appTheme = Theme.of(context);
+      return AccentTheme(
+        accent: accent,
+        child: Builder(
+          builder: (context) => Scaffold(
+            appBar: _buildAppBar(context, state),
+            drawer: Drawer(
+              child: Theme(data: appTheme, child: drawer),
+            ),
+            body: _buildBody(context, state),
+          ),
+        ),
       );
     }
 
@@ -196,11 +221,16 @@ class _HomePageState extends State<HomePage> {
           SizedBox(width: 280, child: drawer),
           const VerticalDivider(width: 1),
           Expanded(
-            child: Column(
-              children: [
-                _buildWideAppBar(state),
-                Expanded(child: body),
-              ],
+            child: AccentTheme(
+              accent: accent,
+              child: Builder(
+                builder: (context) => Column(
+                  children: [
+                    _buildWideAppBar(context, state),
+                    Expanded(child: _buildBody(context, state)),
+                  ],
+                ),
+              ),
             ),
           ),
         ],
@@ -208,7 +238,7 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  PreferredSizeWidget _buildAppBar(AppState state) {
+  PreferredSizeWidget _buildAppBar(BuildContext context, AppState state) {
     if (_searchActive) {
       return AppBar(
         scrolledUnderElevation: 0,
@@ -254,7 +284,7 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Widget _buildWideAppBar(AppState state) {
+  Widget _buildWideAppBar(BuildContext context, AppState state) {
     if (_searchActive) {
       return Container(
         height: 56,
@@ -758,7 +788,7 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Widget _buildBody(AppState state) {
+  Widget _buildBody(BuildContext context, AppState state) {
     Widget listView;
     if (_searchActive) {
       listView = SearchView(

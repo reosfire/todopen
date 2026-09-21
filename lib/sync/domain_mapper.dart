@@ -212,7 +212,9 @@ class DomainMapper {
       id: e.id,
       name: e.stringField(SmartListField.name),
       iconCodePoint: e.intField(SmartListField.icon, 0xe0c8),
-      colorValue: _colorOut(e.intField(SmartListField.color, 0xFFAB47BC)),
+      colorValue: _colorOut(
+        e.intField(SmartListField.color, SmartList.defaultColorValue),
+      ),
       filter: filterFromBlob(e.blobField(SmartListField.filter)),
     );
   }

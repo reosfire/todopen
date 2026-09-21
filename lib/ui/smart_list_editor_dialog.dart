@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../models/smart_list.dart';
 import '../state/app_state.dart';
 import '../utils/uuid128.dart';
+import 'color_picker.dart';
 
 /// The filter types available for user-created smart lists.
 enum _EditorFilterType { overdue, dateRange, tags, completed, all }
@@ -18,6 +19,7 @@ class SmartListEditorDialog extends StatefulWidget {
 class _SmartListEditorDialogState extends State<SmartListEditorDialog> {
   late final TextEditingController _nameCtrl;
   _EditorFilterType _filterType = _EditorFilterType.all;
+  late int _colorValue;
   final Set<Uuid128> _tagIds = {};
   DateTime? _dateFrom;
   DateTime? _dateTo;
@@ -29,6 +31,8 @@ class _SmartListEditorDialogState extends State<SmartListEditorDialog> {
     super.initState();
     final sl = widget.smartList;
     _nameCtrl = TextEditingController(text: sl?.name ?? '');
+    // Fall back to whatever the model treats as a new smart list's color.
+    _colorValue = sl?.colorValue ?? SmartList.defaultColorValue;
     if (sl != null) {
       _filterType = _filterTypeFromFilter(sl.filter);
       if (sl.filter case TagsFilter(:final tagIds)) {
@@ -81,6 +85,13 @@ class _SmartListEditorDialogState extends State<SmartListEditorDialog> {
                   border: OutlineInputBorder(),
                 ),
                 autofocus: !_isEditing,
+              ),
+              const SizedBox(height: 16),
+              const Text('Color'),
+              const SizedBox(height: 8),
+              ColorPickerField(
+                value: _colorValue,
+                onChanged: (c) => setState(() => _colorValue = c!),
               ),
               const SizedBox(height: 16),
               DropdownButtonFormField<_EditorFilterType>(
@@ -225,10 +236,16 @@ class _SmartListEditorDialogState extends State<SmartListEditorDialog> {
       final sl = widget.smartList!;
       sl.name = name;
       sl.filter = filter;
+      sl.colorValue = _colorValue;
       state.updateSmartList(sl);
     } else {
       state.addSmartList(
-        SmartList(id: state.newId(), name: name, filter: filter),
+        SmartList(
+          id: state.newId(),
+          name: name,
+          filter: filter,
+          colorValue: _colorValue,
+        ),
       );
     }
     Navigator.pop(context);

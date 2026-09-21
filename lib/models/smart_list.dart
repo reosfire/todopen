@@ -409,11 +409,14 @@ class SmartList {
   int colorValue;
   SmartListFilter filter;
 
+  /// The color a smart list gets when none was chosen for it.
+  static const defaultColorValue = 0xFFAB47BC;
+
   SmartList({
     required this.id,
     required this.name,
     this.iconCodePoint = 0xe0c8, // Icons.auto_awesome
-    this.colorValue = 0xFFAB47BC,
+    this.colorValue = defaultColorValue,
     required this.filter,
   });
 

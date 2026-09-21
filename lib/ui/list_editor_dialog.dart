@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../models/task_list.dart';
 import '../state/app_state.dart';
 import '../utils/uuid128.dart';
+import 'color_picker.dart';
 
 class ListEditorDialog extends StatefulWidget {
   final TaskList? taskList;
@@ -16,18 +17,6 @@ class _ListEditorDialogState extends State<ListEditorDialog> {
   late final TextEditingController _nameCtrl;
   Uuid128? _folderId;
   int? _colorValue;
-
-  static const _colors = [
-    null, // Default (theme color)
-    0xFF42A5F5, // blue
-    0xFF66BB6A, // green
-    0xFFEF5350, // red
-    0xFFAB47BC, // purple
-    0xFFFF7043, // orange
-    0xFFFFA726, // amber
-    0xFF26C6DA, // cyan
-    0xFF78909C, // grey
-  ];
 
   bool get _isEditing => widget.taskList != null;
 
@@ -83,39 +72,10 @@ class _ListEditorDialogState extends State<ListEditorDialog> {
             const SizedBox(height: 16),
             const Text('Color'),
             const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              children: _colors.map((c) {
-                return GestureDetector(
-                  onTap: () => setState(() => _colorValue = c),
-                  child: Container(
-                    width: 32,
-                    height: 32,
-                    decoration: BoxDecoration(
-                      color: c != null ? Color(c) : null,
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        width: _colorValue == c ? 3 : 1,
-                        color: _colorValue == c
-                            ? Colors.black54
-                            : Colors.grey.shade300,
-                      ),
-                    ),
-                    child: c == null
-                        ? Center(
-                            child: Text(
-                              'A',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                                color: Theme.of(context).colorScheme.primary,
-                              ),
-                            ),
-                          )
-                        : null,
-                  ),
-                );
-              }).toList(),
+            ColorPickerField(
+              value: _colorValue,
+              allowNoColor: true,
+              onChanged: (c) => setState(() => _colorValue = c),
             ),
           ],
         ),
