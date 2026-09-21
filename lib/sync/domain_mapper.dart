@@ -206,10 +206,15 @@ class DomainMapper {
   // ───── Domain → ops ─────
 
   /// Ops that fully describe a new task.
-  static List<Op> createTask(Task t, HlcClock clock) => [
-    CreateEntityOp(clock.issue(), EntityKind.task, t.id),
-    ..._taskFieldOps(t, clock, null),
-  ];
+  static List<Op> createTask(Task t, HlcClock clock) {
+    // The create and its initial fields share one stamp so the snapshot can
+    // drop every per-field HLC for a freshly created entity.
+    final hlc = clock.issue();
+    return [
+      CreateEntityOp(hlc, EntityKind.task, t.id),
+      ..._taskFieldOps(t, clock, null, stamp: hlc),
+    ];
+  }
 
   /// Ops for the fields of [next] that differ from [previous].
   ///
@@ -217,13 +222,26 @@ class DomainMapper {
   static List<Op> updateTask(Task next, Task? previous, HlcClock clock) =>
       _taskFieldOps(next, clock, previous);
 
-  static List<Op> _taskFieldOps(Task t, HlcClock clock, Task? prev) {
+  static List<Op> _taskFieldOps(
+    Task t,
+    HlcClock clock,
+    Task? prev, {
+    Hlc? stamp,
+  }) {
     final ops = <Op>[];
-    void set(int field, OpValue value, bool changed) {
+    // One timestamp for the whole edit. The fields of a single user action
+    // are concurrent with each other, so giving them distinct stamps buys
+    // nothing and costs 12 bytes per field in the snapshot, where a stamp
+    // equal to the entity's createdAt is elided entirely.
+    final hlc = stamp ?? clock.issue();
+    // On create (prev == null) a field that is empty or absent is simply
+    // omitted: the reader's defaults already produce '' / null / {}, so
+    // writing them costs bytes and says nothing. On update the op must
+    // still be emitted, because there it means "clear this".
+    void set(int field, OpValue value, bool changed, {bool isDefault = false}) {
       if (!changed) return;
-      ops.add(
-        SetFieldOp(clock.issue(), EntityKind.task, t.id, field, value),
-      );
+      if (prev == null && isDefault) return;
+      ops.add(SetFieldOp(hlc, EntityKind.task, t.id, field, value));
     }
 
     set(
@@ -235,11 +253,13 @@ class DomainMapper {
       TaskField.notes,
       StringValue(t.notes),
       prev == null || prev.notes != t.notes,
+      isDefault: t.notes.isEmpty,
     );
     set(
       TaskField.isCompleted,
       BoolValue(t.isCompleted),
       prev == null || prev.isCompleted != t.isCompleted,
+      isDefault: !t.isCompleted,
     );
     set(
       TaskField.listId,
@@ -257,6 +277,7 @@ class DomainMapper {
           ? const NullValue()
           : TimestampValue(t.scheduledDate!.millisecondsSinceEpoch),
       prev == null || prev.scheduledDate != t.scheduledDate,
+      isDefault: t.scheduledDate == null,
     );
     set(
       TaskField.recurrence,
@@ -264,11 +285,13 @@ class DomainMapper {
           ? const NullValue()
           : BlobValue(recurrenceToBlob(t.recurrence!)),
       prev == null || !_sameRecurrence(prev.recurrence, t.recurrence),
+      isDefault: t.recurrence == null,
     );
     set(
       TaskField.tagIds,
       UuidSetValue(t.tagIds),
       prev == null || !_sameSet(prev.tagIds, t.tagIds),
+      isDefault: t.tagIds.isEmpty,
     );
     set(
       TaskField.completedDates,
@@ -278,6 +301,7 @@ class DomainMapper {
             prev.completedDates.map(toDays).toSet(),
             t.completedDates.map(toDays).toSet(),
           ),
+      isDefault: t.completedDates.isEmpty,
     );
     return ops;
   }
@@ -296,21 +320,28 @@ class DomainMapper {
   static bool _sameSet<T>(Set<T> a, Set<T> b) =>
       a.length == b.length && a.containsAll(b);
 
-  static List<Op> createList(TaskList l, HlcClock clock) => [
-    CreateEntityOp(clock.issue(), EntityKind.list, l.id),
-    ..._listFieldOps(l, clock, null),
-  ];
+  static List<Op> createList(TaskList l, HlcClock clock) {
+    final hlc = clock.issue();
+    return [
+      CreateEntityOp(hlc, EntityKind.list, l.id),
+      ..._listFieldOps(l, clock, null, stamp: hlc),
+    ];
+  }
 
   static List<Op> updateList(TaskList next, TaskList? prev, HlcClock clock) =>
       _listFieldOps(next, clock, prev);
 
-  static List<Op> _listFieldOps(TaskList l, HlcClock clock, TaskList? prev) {
+  static List<Op> _listFieldOps(
+    TaskList l,
+    HlcClock clock,
+    TaskList? prev, {
+    Hlc? stamp,
+  }) {
     final ops = <Op>[];
+    final hlc = stamp ?? clock.issue();
     void set(int field, OpValue value, bool changed) {
       if (!changed) return;
-      ops.add(
-        SetFieldOp(clock.issue(), EntityKind.list, l.id, field, value),
-      );
+      ops.add(SetFieldOp(hlc, EntityKind.list, l.id, field, value));
     }
 
     set(ListField.name, StringValue(l.name), prev == null || prev.name != l.name);
@@ -327,16 +358,14 @@ class DomainMapper {
     return ops;
   }
 
-  static List<Op> createFolder(Folder f, HlcClock clock) => [
-    CreateEntityOp(clock.issue(), EntityKind.folder, f.id),
-    SetFieldOp(
-      clock.issue(),
-      EntityKind.folder,
-      f.id,
-      FolderField.name,
-      StringValue(f.name),
-    ),
-  ];
+  static List<Op> createFolder(Folder f, HlcClock clock) {
+    final hlc = clock.issue();
+    return [
+      CreateEntityOp(hlc, EntityKind.folder, f.id),
+      SetFieldOp(hlc, EntityKind.folder, f.id, FolderField.name,
+          StringValue(f.name)),
+    ];
+  }
 
   static List<Op> updateFolder(Folder f, Folder? prev, HlcClock clock) => [
     if (prev == null || prev.name != f.name)
@@ -349,37 +378,41 @@ class DomainMapper {
       ),
   ];
 
-  static List<Op> createTag(Tag t, HlcClock clock) => [
-    CreateEntityOp(clock.issue(), EntityKind.tag, t.id),
-    ..._tagFieldOps(t, clock, null),
-  ];
+  static List<Op> createTag(Tag t, HlcClock clock) {
+    final hlc = clock.issue();
+    return [
+      CreateEntityOp(hlc, EntityKind.tag, t.id),
+      ..._tagFieldOps(t, clock, null, stamp: hlc),
+    ];
+  }
 
   static List<Op> updateTag(Tag next, Tag? prev, HlcClock clock) =>
       _tagFieldOps(next, clock, prev);
 
-  static List<Op> _tagFieldOps(Tag t, HlcClock clock, Tag? prev) => [
-    if (prev == null || prev.name != t.name)
-      SetFieldOp(
-        clock.issue(),
-        EntityKind.tag,
-        t.id,
-        TagField.name,
-        StringValue(t.name),
-      ),
-    if (prev == null || prev.colorValue != t.colorValue)
-      SetFieldOp(
-        clock.issue(),
-        EntityKind.tag,
-        t.id,
-        TagField.color,
-        IntValue(t.colorValue),
-      ),
-  ];
+  static List<Op> _tagFieldOps(
+    Tag t,
+    HlcClock clock,
+    Tag? prev, {
+    Hlc? stamp,
+  }) {
+    final hlc = stamp ?? clock.issue();
+    return [
+      if (prev == null || prev.name != t.name)
+        SetFieldOp(hlc, EntityKind.tag, t.id, TagField.name,
+            StringValue(t.name)),
+      if (prev == null || prev.colorValue != t.colorValue)
+        SetFieldOp(hlc, EntityKind.tag, t.id, TagField.color,
+            IntValue(t.colorValue)),
+    ];
+  }
 
-  static List<Op> createSmartList(SmartList s, HlcClock clock) => [
-    CreateEntityOp(clock.issue(), EntityKind.smartList, s.id),
-    ..._smartListFieldOps(s, clock, null),
-  ];
+  static List<Op> createSmartList(SmartList s, HlcClock clock) {
+    final hlc = clock.issue();
+    return [
+      CreateEntityOp(hlc, EntityKind.smartList, s.id),
+      ..._smartListFieldOps(s, clock, null, stamp: hlc),
+    ];
+  }
 
   static List<Op> updateSmartList(
     SmartList next,
@@ -390,14 +423,14 @@ class DomainMapper {
   static List<Op> _smartListFieldOps(
     SmartList s,
     HlcClock clock,
-    SmartList? prev,
-  ) {
+    SmartList? prev, {
+    Hlc? stamp,
+  }) {
     final ops = <Op>[];
+    final hlc = stamp ?? clock.issue();
     void set(int field, OpValue value, bool changed) {
       if (!changed) return;
-      ops.add(
-        SetFieldOp(clock.issue(), EntityKind.smartList, s.id, field, value),
-      );
+      ops.add(SetFieldOp(hlc, EntityKind.smartList, s.id, field, value));
     }
 
     set(

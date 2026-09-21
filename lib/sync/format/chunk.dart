@@ -124,8 +124,14 @@ class Chunk {
     if (hasRecreate) OpCodec.writeHlc(w, e.lastCreate);
     w.varint(e.fields.length);
     for (final entry in e.fields.entries) {
-      w.varint(entry.key);
-      OpCodec.writeHlc(w, entry.value.hlc);
+      // Field id carries a flag in bit 0: set means "this field's stamp is
+      // the entity's createdAt", which lets us omit 12 bytes. Fields written
+      // together in one action — which is most of them, since a task is
+      // created in a single edit — all share that stamp, and at four fields
+      // per task the HLCs otherwise outweigh the data.
+      final sameAsCreate = entry.value.hlc == e.createdAt;
+      w.varint((entry.key << 1) | (sameAsCreate ? 1 : 0));
+      if (!sameAsCreate) OpCodec.writeHlc(w, entry.value.hlc);
       _writePooledValue(w, entry.value.value, pool);
     }
   }
@@ -243,8 +249,10 @@ class Chunk {
     final fieldCount = r.varint();
     final fields = <int, Stamped<OpValue>>{};
     for (var i = 0; i < fieldCount; i++) {
-      final fieldId = r.varint();
-      final hlc = OpCodec.readHlc(r);
+      final tagged = r.varint();
+      final fieldId = tagged >> 1;
+      // Bit 0 set means the stamp was elided because it equals createdAt.
+      final hlc = (tagged & 1) != 0 ? createdAt : OpCodec.readHlc(r);
       fields[fieldId] = Stamped(_readPooledValue(r, pool), hlc);
     }
     return ReplicatedEntity(

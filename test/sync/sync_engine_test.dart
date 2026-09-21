@@ -1,6 +1,8 @@
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:todopen/models/task.dart';
+import 'package:todopen/sync/domain_mapper.dart';
 import 'package:todopen/sync/engine/sync_engine.dart';
 import 'package:todopen/sync/format/manifest.dart';
 import 'package:todopen/sync/model/hlc.dart';
@@ -25,30 +27,26 @@ SyncEngine engineFor(
   );
 }
 
-/// Convenience: record a task creation with a title.
+/// Record a task creation the way the app does.
+///
+/// Routes through DomainMapper rather than hand-rolling ops, so the tests
+/// measure and exercise the real write path — including the shared
+/// per-edit timestamp that lets the snapshot elide per-field stamps.
 void addTask(SyncEngine e, Uuid128 id, String title, {Uuid128? listId}) {
-  e.record(CreateEntityOp(e.clock.issue(), EntityKind.task, id));
-  e.record(
-    SetFieldOp(
-      e.clock.issue(),
-      EntityKind.task,
-      id,
-      TaskField.title,
-      StringValue(title),
+  e.recordAll(
+    DomainMapper.createTask(
+      Task(
+        id: id,
+        title: title,
+        createdAt: DateTime.fromMillisecondsSinceEpoch(1700000000000),
+        listId: listId ?? _defaultList,
+      ),
+      e.clock,
     ),
   );
-  if (listId != null) {
-    e.record(
-      SetFieldOp(
-        e.clock.issue(),
-        EntityKind.task,
-        id,
-        TaskField.listId,
-        UuidValue(listId),
-      ),
-    );
-  }
 }
+
+final _defaultList = Uuid128.fromBytes(Uint8List(16));
 
 void main() {
   group('basic push/pull', () {
@@ -60,7 +58,9 @@ void main() {
       final report = await e.sync();
 
       expect(store.files.containsKey(SyncEngine.manifestPath), isTrue);
-      expect(report.opsPushed, 2); // create + title
+      // create + title + listId + createdAt; empty/default fields such as
+      // notes and tags are omitted on create rather than written as blanks.
+      expect(report.opsPushed, 4);
       // Compaction folds the very first segment straight into a base.
       expect(report.compacted, isTrue);
       expect(store.pathsUnder('/base'), isNotEmpty);
