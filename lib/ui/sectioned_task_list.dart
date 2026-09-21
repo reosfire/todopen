@@ -386,13 +386,9 @@ class _TaskTileState extends State<TaskTile> {
       color: Colors.transparent,
       child: Dismissible(
       key: ValueKey(task.id),
-      direction: DismissDirection.endToStart,
-      background: Container(
-        color: Colors.red,
-        alignment: Alignment.centerRight,
-        padding: const EdgeInsets.only(right: 16),
-        child: const Icon(Icons.delete, color: Colors.white),
-      ),
+      // Swipe-to-delete is disabled: horizontal drags interfere with
+      // selecting the task title text.
+      direction: DismissDirection.none,
       onDismissed: (_) => state.deleteTask(task.id),
       child: Listener(
         onPointerDown: (event) {
