@@ -18,9 +18,32 @@ import 'tag_manager_dialog.dart';
 import 'sync_settings_page.dart';
 import 'search_view.dart';
 import 'accent_theme.dart';
+import 'side_panel.dart';
 
 /// Whether a search covers every task or only the selected list.
 enum SearchScope { global, list }
+
+// ───── Side panel geometry ─────
+
+const double _defaultSidePanelWidth = 280;
+const double _minSidePanelWidth = 200;
+const double _maxSidePanelWidth = 520;
+
+/// The content area never shrinks below this, however wide the panel is
+/// dragged, so a narrow window cannot squeeze the task list out of existence.
+const double _minContentWidth = 320;
+
+const double _defaultSmartListsHeight = 220;
+const double _defaultListsHeight = 280;
+
+/// A scrollable section always keeps enough room for roughly one row, so a
+/// collapsed section stays visible and can be dragged back open.
+const double _minSectionHeight = 44;
+
+/// Storage keys for the geometry above.
+const _sidePanelWidthKey = 'side_panel_width';
+const _smartListsHeightKey = 'side_panel_smart_lists_height';
+const _listsHeightKey = 'side_panel_lists_height';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -39,6 +62,13 @@ class _HomePageState extends State<HomePage> {
   bool _isLockedRight = false;
   Set<Uuid128> _expandedFolderIds = {};
   final _storageService = StorageService();
+
+  /// Side panel geometry on wide layouts. The two scrollable sections are
+  /// sized explicitly; the remaining sections are as tall as their content, so
+  /// dragging a divider trades height between the two scrollers around it.
+  double _sidePanelWidth = _defaultSidePanelWidth;
+  double _smartListsHeight = _defaultSmartListsHeight;
+  double _listsHeight = _defaultListsHeight;
 
   /// Search state. [_searchScope] decides whether the query runs over every
   /// task or only the list that was selected when search was opened.
@@ -59,14 +89,26 @@ class _HomePageState extends State<HomePage> {
       _storageService.loadExpandedFolderIds(),
       _storageService.loadSelectedListId(),
       _storageService.loadSelectedSmartListId(),
+      _storageService.loadDouble(_sidePanelWidthKey),
+      _storageService.loadDouble(_smartListsHeightKey),
+      _storageService.loadDouble(_listsHeightKey),
     ]);
     final ids = results[0] as Set<Uuid128>;
     final listId = results[1] as Uuid128?;
     final smartListId = results[2] as Uuid128?;
+    final width = results[3] as double?;
+    final smartListsHeight = results[4] as double?;
+    final listsHeight = results[5] as double?;
     setState(() {
       _expandedFolderIds = ids;
       _selectedListId = listId;
       _selectedSmartListId = smartListId;
+      _sidePanelWidth = (width ?? _defaultSidePanelWidth).clamp(
+        _minSidePanelWidth,
+        _maxSidePanelWidth,
+      );
+      _smartListsHeight = smartListsHeight ?? _defaultSmartListsHeight;
+      _listsHeight = listsHeight ?? _defaultListsHeight;
     });
     // If nothing was saved before, fall back to the first list.
     if (_selectedListId == null && _selectedSmartListId == null) {
@@ -81,6 +123,15 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _saveExpandedFolders() async {
     await _storageService.saveExpandedFolderIds(_expandedFolderIds);
+  }
+
+  /// Written on drag end rather than on every frame of a drag.
+  Future<void> _savePanelGeometry() async {
+    await Future.wait([
+      _storageService.saveDouble(_sidePanelWidthKey, _sidePanelWidth),
+      _storageService.saveDouble(_smartListsHeightKey, _smartListsHeight),
+      _storageService.saveDouble(_listsHeightKey, _listsHeight),
+    ]);
   }
 
   @override
@@ -216,26 +267,65 @@ class _HomePageState extends State<HomePage> {
     }
 
     return Scaffold(
-      body: Row(
-        children: [
-          SizedBox(width: 280, child: drawer),
-          const VerticalDivider(width: 1),
-          Expanded(
-            child: AccentTheme(
-              accent: accent,
-              child: Builder(
-                builder: (context) => Column(
-                  children: [
-                    _buildWideAppBar(context, state),
-                    Expanded(child: _buildBody(context, state)),
-                  ],
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          _clampSidePanelWidth(constraints.maxWidth);
+          return Row(
+            children: [
+              SizedBox(width: _sidePanelWidth, child: _buildSidePanel(state)),
+              PanelResizeHandle(
+                onDrag: (d) => _resizeSidePanel(d, constraints.maxWidth),
+                onDragEnd: _savePanelGeometry,
+              ),
+              Expanded(
+                child: AccentTheme(
+                  accent: accent,
+                  child: Builder(
+                    builder: (context) => Column(
+                      children: [
+                        _buildWideAppBar(context, state),
+                        Expanded(child: _buildBody(context, state)),
+                      ],
+                    ),
+                  ),
                 ),
               ),
-            ),
-          ),
-        ],
+            ],
+          );
+        },
       ),
     );
+  }
+
+  /// Keeps the panel inside its own bounds and leaves the content area at
+  /// least [_minContentWidth], which matters when the window is narrowed
+  /// after the panel was dragged wide.
+  void _clampSidePanelWidth(double available) {
+    final maxWidth = (available - _minContentWidth).clamp(
+      _minSidePanelWidth,
+      _maxSidePanelWidth,
+    );
+    final clamped = _sidePanelWidth.clamp(_minSidePanelWidth, maxWidth);
+    // Layout-time correction consumed later in this same build, so it is
+    // applied directly rather than through setState.
+    if (clamped != _sidePanelWidth) _sidePanelWidth = clamped;
+  }
+
+  /// Widens or narrows the panel by [delta], returning the travel that did
+  /// not fit.
+  double _resizeSidePanel(double delta, double available) {
+    final maxWidth = (available - _minContentWidth).clamp(
+      _minSidePanelWidth,
+      _maxSidePanelWidth,
+    );
+    final before = _sidePanelWidth;
+    setState(() {
+      _sidePanelWidth = (_sidePanelWidth + delta).clamp(
+        _minSidePanelWidth,
+        maxWidth,
+      );
+    });
+    return delta - (_sidePanelWidth - before);
   }
 
   PreferredSizeWidget _buildAppBar(BuildContext context, AppState state) {
@@ -357,7 +447,9 @@ class _HomePageState extends State<HomePage> {
             textInputAction: TextInputAction.search,
             style: theme.textTheme.bodyLarge,
             decoration: InputDecoration(
-              hintText: scoped ? 'Search in $listName...' : 'Search all tasks...',
+              hintText: scoped
+                  ? 'Search in $listName...'
+                  : 'Search all tasks...',
               border: InputBorder.none,
               isDense: true,
               suffixIcon: _searchQuery.isEmpty
@@ -413,6 +505,8 @@ class _HomePageState extends State<HomePage> {
     return defaultTitle;
   }
 
+  /// The narrow-layout drawer: one plain scroller, since a phone has no room
+  /// to give each section its own viewport.
   Widget _buildDrawer(AppState state) {
     return SafeArea(
       child: Column(
@@ -422,140 +516,325 @@ class _HomePageState extends State<HomePage> {
               padding: EdgeInsets.zero,
               children: [
                 // Global search across every list.
-                ListTile(
-                  leading: const Icon(Icons.search, size: 20),
-                  title: const Text('Search'),
-                  selected: _searchActive &&
-                      _searchScope == SearchScope.global,
-                  dense: true,
-                  onTap: () =>
-                      _openSearch(SearchScope.global, closeDrawer: true),
-                ),
+                _buildSearchTile(closeDrawer: true),
                 const Divider(),
 
                 // Smart lists
                 const _SectionHeader('SMART LISTS'),
-                // Built-in smart lists (always shown, not editable)
-                ...builtInSmartLists.map((sl) {
-                  final count = sl.filter.countTasks(state.tasks);
-                  return ListTile(
-                    leading: Icon(sl.icon, color: sl.color),
-                    title: Text(sl.name),
-                    trailing: count > 0
-                        ? SizedBox(
-                            width: 32,
-                            child: Text(
-                              '$count',
-                              style: Theme.of(context).textTheme.bodySmall,
-                              textAlign: TextAlign.center,
-                            ),
-                          )
-                        : null,
-                    selected: _selectedSmartListId == sl.id,
-                    onTap: () => _selectSmartList(sl.id),
-                    dense: true,
-                  );
-                }),
-                // User-created smart lists
-                ...state.smartLists.map((sl) {
-                  final count = sl.filter.countTasks(state.tasks);
-                  return _HoverTrailingTile(
-                    child: (isHovered) => ListTile(
-                      leading: Icon(sl.icon, color: sl.color),
-                      title: Text(sl.name),
-                      trailing: SizedBox(
-                        width: 32,
-                        height: 32,
-                        child: isHovered
-                            ? IconButton(
-                                icon: const Icon(Icons.more_horiz, size: 18),
-                                onPressed: () =>
-                                    _showSmartListMenu(context, state, sl),
-                                padding: EdgeInsets.zero,
-                                constraints: const BoxConstraints.tightFor(
-                                  width: 32,
-                                  height: 32,
-                                ),
-                                visualDensity: VisualDensity.compact,
-                              )
-                            : count > 0
-                            ? Center(
-                                child: Text(
-                                  '$count',
-                                  style: Theme.of(context).textTheme.bodySmall,
-                                  textAlign: TextAlign.center,
-                                ),
-                              )
-                            : const SizedBox.shrink(),
-                      ),
-                      selected: _selectedSmartListId == sl.id,
-                      onTap: () => _selectSmartList(sl.id),
-                      dense: true,
-                    ),
-                  );
-                }),
-                ListTile(
-                  leading: const Icon(Icons.add, size: 20),
-                  title: const Text('Add Smart List'),
-                  dense: true,
-                  onTap: () => _showSmartListEditor(context, state),
-                ),
+                ..._buildSmartListItems(state),
+                _buildAddSmartListTile(state),
                 const Divider(),
 
                 // Folders and lists
                 const _SectionHeader('LISTS'),
                 ..._buildFolderAndListItems(state),
-                ListTile(
-                  leading: const Icon(Icons.add, size: 20),
-                  title: const Text('Add List'),
-                  dense: true,
-                  onTap: () => _showListEditor(context, state, null),
-                ),
-                ListTile(
-                  leading: const Icon(
-                    Icons.create_new_folder_outlined,
-                    size: 20,
-                  ),
-                  title: const Text('Add Folder'),
-                  dense: true,
-                  onTap: () => _showFolderEditor(context, state, null),
-                ),
+                ..._buildAddListTiles(state),
                 const Divider(),
 
                 // Bottom actions
-                ListTile(
-                  leading: const Icon(Icons.label_outline, size: 20),
-                  title: const Text('Manage Tags'),
-                  dense: true,
-                  onTap: () {
-                    showDialog(
-                      context: context,
-                      builder: (_) => const TagManagerDialog(),
-                    );
-                  },
-                ),
-                ListTile(
-                  leading: Icon(
-                    state.isSignedIn ? Icons.cloud_done : Icons.cloud_off,
-                    size: 20,
-                  ),
-                  title: Text(state.isSignedIn ? 'Sync Settings' : 'Sign In'),
-                  dense: true,
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const SyncSettingsPage(),
-                      ),
-                    );
-                  },
-                ),
+                ..._buildManagementTiles(state),
               ],
             ),
           ),
         ],
       ),
     );
+  }
+
+  /// The wide-layout side panel: the same items, split into sections the user
+  /// can resize against each other, with smart lists and lists each scrolling
+  /// independently.
+  Widget _buildSidePanel(AppState state) {
+    return SafeArea(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          // Sections whose height follows their content. Measured from the
+          // real row metrics so the two scrollers get exactly what is left.
+          final tileHeight = _denseTileHeight(context);
+          final searchHeight = tileHeight;
+          final addListsHeight = tileHeight * 2;
+          final managementHeight = tileHeight * 2;
+          const headerHeight = 26.0; // section label
+          const handleHeight = 9.0; // SectionResizeHandle
+
+          final fixed =
+              searchHeight +
+              addListsHeight +
+              managementHeight +
+              headerHeight * 2 +
+              handleHeight * 4;
+          final flexible = constraints.maxHeight - fixed;
+
+          // Too short to honour both minimums: fall back to a single scroller
+          // so nothing overflows.
+          if (flexible < _minSectionHeight * 2) {
+            return _buildDrawer(state);
+          }
+
+          _clampSectionHeights(flexible);
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              SizedBox(
+                height: searchHeight,
+                child: _buildSearchTile(closeDrawer: false),
+              ),
+              SectionResizeHandle(
+                // Nothing above smart lists can resize, so this handle moves
+                // the boundary the same way the one below it does.
+                onDrag: (d) => _resizeSections(-d, flexible),
+                onDragEnd: _savePanelGeometry,
+              ),
+              SizedBox(
+                height: _smartListsHeight + headerHeight,
+                child: PanelSection(
+                  header: 'SMART LISTS',
+                  headerActions: [
+                    IconButton(
+                      icon: const Icon(Icons.add, size: 18),
+                      tooltip: 'Add Smart List',
+                      visualDensity: VisualDensity.compact,
+                      constraints: const BoxConstraints.tightFor(
+                        width: 28,
+                        height: 28,
+                      ),
+                      padding: EdgeInsets.zero,
+                      onPressed: () => _showSmartListEditor(context, state),
+                    ),
+                  ],
+                  child: ListView(
+                    padding: EdgeInsets.zero,
+                    children: _buildSmartListItems(state),
+                  ),
+                ),
+              ),
+              SectionResizeHandle(
+                onDrag: (d) => _resizeSections(d, flexible),
+                onDragEnd: _savePanelGeometry,
+              ),
+              SizedBox(
+                height: _listsHeight + headerHeight,
+                child: PanelSection(
+                  header: 'LISTS',
+                  child: ListView(
+                    padding: EdgeInsets.zero,
+                    children: _buildFolderAndListItems(state),
+                  ),
+                ),
+              ),
+              SectionResizeHandle(
+                // Below the lists section: dragging down grows LISTS at the
+                // expense of SMART LISTS above it.
+                onDrag: (d) => _resizeSections(-d, flexible),
+                onDragEnd: _savePanelGeometry,
+              ),
+              SizedBox(
+                height: addListsHeight,
+                child: ListView(
+                  padding: EdgeInsets.zero,
+                  children: _buildAddListTiles(state),
+                ),
+              ),
+              SectionResizeHandle(
+                // Same boundary again: the sections below it are sized by
+                // their content, so this is the only height there is to give.
+                onDrag: (d) => _resizeSections(-d, flexible),
+                onDragEnd: _savePanelGeometry,
+              ),
+              SizedBox(
+                height: managementHeight,
+                child: ListView(
+                  padding: EdgeInsets.zero,
+                  children: _buildManagementTiles(state),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  /// A dense [ListTile]'s height, which drives how tall the fixed sections
+  /// need to be. Text scaling makes this larger, so it is measured rather
+  /// than hard-coded.
+  double _denseTileHeight(BuildContext context) {
+    final scaled = MediaQuery.textScalerOf(context).scale(14);
+    return (40.0 + (scaled - 14) * 1.5).clamp(40.0, 88.0);
+  }
+
+  /// Moves the smart-lists/lists boundary by [delta] and returns the travel
+  /// that did not fit, so the handle knows how far past the end it went.
+  double _resizeSections(double delta, double available) {
+    final before = _smartListsHeight;
+    setState(() {
+      _smartListsHeight = (_smartListsHeight + delta).clamp(
+        _minSectionHeight,
+        available - _minSectionHeight,
+      );
+      _listsHeight = available - _smartListsHeight;
+    });
+    return delta - (_smartListsHeight - before);
+  }
+
+  /// Fits the stored section heights to the space actually available, which
+  /// changes when the window is resized or the geometry is first restored.
+  void _clampSectionHeights(double available) {
+    final maxHeight = available - _minSectionHeight;
+    var smart = _smartListsHeight;
+    var lists = _listsHeight;
+
+    if (smart + lists != available) {
+      // Share the difference in proportion to the current split so a window
+      // resize does not collapse one section into the other.
+      final total = smart + lists;
+      if (total <= 0) {
+        smart = available / 2;
+      } else {
+        smart = available * (smart / total);
+      }
+    }
+    smart = smart.clamp(_minSectionHeight, maxHeight);
+    lists = available - smart;
+
+    if (smart != _smartListsHeight || lists != _listsHeight) {
+      // Layout-time correction, so apply it directly rather than via
+      // setState; the values are consumed later in this same build.
+      _smartListsHeight = smart;
+      _listsHeight = lists;
+    }
+  }
+
+  // ───── Side panel items, shared by the drawer and the wide panel ─────
+
+  Widget _buildSearchTile({required bool closeDrawer}) {
+    return ListTile(
+      leading: const Icon(Icons.search, size: 20),
+      title: const Text('Search'),
+      selected: _searchActive && _searchScope == SearchScope.global,
+      dense: true,
+      onTap: () => _openSearch(SearchScope.global, closeDrawer: closeDrawer),
+    );
+  }
+
+  List<Widget> _buildSmartListItems(AppState state) {
+    return [
+      // Built-in smart lists (always shown, not editable)
+      ...builtInSmartLists.map((sl) {
+        final count = sl.filter.countTasks(state.tasks);
+        return ListTile(
+          leading: Icon(sl.icon, color: sl.color),
+          title: Text(sl.name),
+          trailing: count > 0
+              ? SizedBox(
+                  width: 32,
+                  child: Text(
+                    '$count',
+                    style: Theme.of(context).textTheme.bodySmall,
+                    textAlign: TextAlign.center,
+                  ),
+                )
+              : null,
+          selected: _selectedSmartListId == sl.id,
+          onTap: () => _selectSmartList(sl.id),
+          dense: true,
+        );
+      }),
+      // User-created smart lists
+      ...state.smartLists.map((sl) {
+        final count = sl.filter.countTasks(state.tasks);
+        return _HoverTrailingTile(
+          child: (isHovered) => ListTile(
+            leading: Icon(sl.icon, color: sl.color),
+            title: Text(sl.name),
+            trailing: SizedBox(
+              width: 32,
+              height: 32,
+              child: isHovered
+                  ? IconButton(
+                      icon: const Icon(Icons.more_horiz, size: 18),
+                      onPressed: () => _showSmartListMenu(context, state, sl),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints.tightFor(
+                        width: 32,
+                        height: 32,
+                      ),
+                      visualDensity: VisualDensity.compact,
+                    )
+                  : count > 0
+                  ? Center(
+                      child: Text(
+                        '$count',
+                        style: Theme.of(context).textTheme.bodySmall,
+                        textAlign: TextAlign.center,
+                      ),
+                    )
+                  : const SizedBox.shrink(),
+            ),
+            selected: _selectedSmartListId == sl.id,
+            onTap: () => _selectSmartList(sl.id),
+            dense: true,
+          ),
+        );
+      }),
+    ];
+  }
+
+  Widget _buildAddSmartListTile(AppState state) {
+    return ListTile(
+      leading: const Icon(Icons.add, size: 20),
+      title: const Text('Add Smart List'),
+      dense: true,
+      onTap: () => _showSmartListEditor(context, state),
+    );
+  }
+
+  List<Widget> _buildAddListTiles(AppState state) {
+    return [
+      ListTile(
+        leading: const Icon(Icons.add, size: 20),
+        title: const Text('Add List'),
+        dense: true,
+        onTap: () => _showListEditor(context, state, null),
+      ),
+      ListTile(
+        leading: const Icon(Icons.create_new_folder_outlined, size: 20),
+        title: const Text('Add Folder'),
+        dense: true,
+        onTap: () => _showFolderEditor(context, state, null),
+      ),
+    ];
+  }
+
+  List<Widget> _buildManagementTiles(AppState state) {
+    return [
+      ListTile(
+        leading: const Icon(Icons.label_outline, size: 20),
+        title: const Text('Manage Tags'),
+        dense: true,
+        onTap: () {
+          showDialog(
+            context: context,
+            builder: (_) => const TagManagerDialog(),
+          );
+        },
+      ),
+      ListTile(
+        leading: Icon(
+          state.isSignedIn ? Icons.cloud_done : Icons.cloud_off,
+          size: 20,
+        ),
+        title: Text(state.isSignedIn ? 'Sync Settings' : 'Sign In'),
+        dense: true,
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const SyncSettingsPage()),
+          );
+        },
+      ),
+    ];
   }
 
   List<Widget> _buildFolderAndListItems(AppState state) {
@@ -834,80 +1113,80 @@ class _HomePageState extends State<HomePage> {
         builder: (context, constraints) {
           return ClipRect(
             child: Row(
-            children: [
-              Expanded(child: listView),
-              GestureDetector(
-                behavior: HitTestBehavior.translucent,
-                onHorizontalDragUpdate: (details) {
-                  setState(() {
-                    final minWidth = 300.0;
-                    final maxWidth = constraints.maxWidth - 300.0;
+              children: [
+                Expanded(child: listView),
+                GestureDetector(
+                  behavior: HitTestBehavior.translucent,
+                  onHorizontalDragUpdate: (details) {
+                    setState(() {
+                      final minWidth = 300.0;
+                      final maxWidth = constraints.maxWidth - 300.0;
 
-                    double delta = -details.delta.dx;
+                      double delta = -details.delta.dx;
 
-                    // If locked, accumulate overflow instead of resizing
-                    if (_isLockedLeft) {
-                      _overflow += delta;
+                      // If locked, accumulate overflow instead of resizing
+                      if (_isLockedLeft) {
+                        _overflow += delta;
 
-                      // Unlock only when cursor comes back
-                      if (_overflow > 0) {
-                        _isLockedLeft = false;
-                        delta = _overflow;
-                        _overflow = 0;
-                      } else {
-                        return; // Still outside → do nothing
+                        // Unlock only when cursor comes back
+                        if (_overflow > 0) {
+                          _isLockedLeft = false;
+                          delta = _overflow;
+                          _overflow = 0;
+                        } else {
+                          return; // Still outside → do nothing
+                        }
                       }
-                    }
 
-                    if (_isLockedRight) {
-                      _overflow += delta;
+                      if (_isLockedRight) {
+                        _overflow += delta;
 
-                      if (_overflow < 0) {
-                        _isLockedRight = false;
-                        delta = _overflow;
-                        _overflow = 0;
-                      } else {
-                        return;
+                        if (_overflow < 0) {
+                          _isLockedRight = false;
+                          delta = _overflow;
+                          _overflow = 0;
+                        } else {
+                          return;
+                        }
                       }
-                    }
 
-                    final newWidth = _notesPanelWidth + delta;
+                      final newWidth = _notesPanelWidth + delta;
 
-                    if (newWidth <= minWidth) {
-                      _notesPanelWidth = minWidth;
-                      _isLockedLeft = true;
-                      _overflow = newWidth - minWidth; // negative overflow
-                    } else if (newWidth >= maxWidth) {
-                      _notesPanelWidth = maxWidth;
-                      _isLockedRight = true;
-                      _overflow = newWidth - maxWidth; // positive overflow
-                    } else {
-                      _notesPanelWidth = newWidth;
-                    }
-                  });
-                },
-                child: MouseRegion(
-                  cursor: SystemMouseCursors.resizeColumn,
-                  child: SizedBox(
-                    width: 8,
-                    child: VerticalDivider(
-                      width: 2,
-                      thickness: 2,
-                      color: Theme.of(context).dividerColor,
+                      if (newWidth <= minWidth) {
+                        _notesPanelWidth = minWidth;
+                        _isLockedLeft = true;
+                        _overflow = newWidth - minWidth; // negative overflow
+                      } else if (newWidth >= maxWidth) {
+                        _notesPanelWidth = maxWidth;
+                        _isLockedRight = true;
+                        _overflow = newWidth - maxWidth; // positive overflow
+                      } else {
+                        _notesPanelWidth = newWidth;
+                      }
+                    });
+                  },
+                  child: MouseRegion(
+                    cursor: SystemMouseCursors.resizeColumn,
+                    child: SizedBox(
+                      width: 8,
+                      child: VerticalDivider(
+                        width: 2,
+                        thickness: 2,
+                        color: Theme.of(context).dividerColor,
+                      ),
                     ),
                   ),
                 ),
-              ),
-              SizedBox(
-                width: _notesPanelWidth,
-                child: freshTask != null
-                    ? TaskNotesPanel(
-                        key: ValueKey(freshTask.id),
-                        task: freshTask,
-                      )
-                    : const SizedBox.shrink(),
-              ),
-            ],
+                SizedBox(
+                  width: _notesPanelWidth,
+                  child: freshTask != null
+                      ? TaskNotesPanel(
+                          key: ValueKey(freshTask.id),
+                          task: freshTask,
+                        )
+                      : const SizedBox.shrink(),
+                ),
+              ],
             ),
           );
         },

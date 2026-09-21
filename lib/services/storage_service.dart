@@ -43,14 +43,26 @@ class StorageService {
 
   Future<Uuid128?> loadSelectedListId() => _loadId(_selectedListKey);
 
-  Future<void> saveSelectedListId(Uuid128? id) =>
-      _saveId(_selectedListKey, id);
+  Future<void> saveSelectedListId(Uuid128? id) => _saveId(_selectedListKey, id);
 
-  Future<Uuid128?> loadSelectedSmartListId() =>
-      _loadId(_selectedSmartListKey);
+  Future<Uuid128?> loadSelectedSmartListId() => _loadId(_selectedSmartListKey);
 
   Future<void> saveSelectedSmartListId(Uuid128? id) =>
       _saveId(_selectedSmartListKey, id);
+
+  /// Panel geometry the user dragged into place — side panel width, the
+  /// heights of its sections. Stored under free-form keys so a new draggable
+  /// divider needs no schema change.
+  Future<double?> loadDouble(String key) async {
+    final row = await (_db.select(
+      _db.uiStateEntries,
+    )..where((r) => r.key.equals(key))).getSingleOrNull();
+    if (row == null) return null;
+    return double.tryParse(row.value);
+  }
+
+  Future<void> saveDouble(String key, double value) =>
+      _put(key, value.toString());
 
   // ───── Helpers ─────
 
@@ -68,8 +80,9 @@ class StorageService {
 
   Future<void> _saveId(String key, Uuid128? id) async {
     if (id == null) {
-      await (_db.delete(_db.uiStateEntries)..where((r) => r.key.equals(key)))
-          .go();
+      await (_db.delete(
+        _db.uiStateEntries,
+      )..where((r) => r.key.equals(key))).go();
       return;
     }
     await _put(key, id.toCompactString());
