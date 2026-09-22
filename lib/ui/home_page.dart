@@ -966,16 +966,16 @@ class _HomePageState extends State<HomePage> {
 
   /// The "+" button in a section header, centred on the count column of the
   /// rows below it by the header row's right padding.
+  ///
+  /// It is the same [PanelActionButton] as the rows' "…" menus, so the two
+  /// share one hit area and one highlight size.
   Widget _sectionAddButton({
     required String tooltip,
     required VoidCallback onPressed,
   }) {
-    return IconButton(
-      icon: const Icon(Icons.add, size: 18),
+    return PanelActionButton(
+      icon: Icons.add,
       tooltip: tooltip,
-      visualDensity: VisualDensity.compact,
-      constraints: const BoxConstraints.tightFor(width: 28, height: 28),
-      padding: EdgeInsets.zero,
       onPressed: onPressed,
     );
   }

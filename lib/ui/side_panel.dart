@@ -9,8 +9,25 @@ import 'package:flutter/material.dart';
 // different defaults. The three constants below are the single source of
 // truth; nothing else may hard-code these numbers.
 
-/// Width of the trailing slot. Wide enough for a three-digit count.
-const double kPanelTrailingWidth = 24;
+/// Width of the trailing slot: the column every row ends in, holding either a
+/// task count or, while the row is hovered, its "…" menu.
+///
+/// It is sized by the buttons rather than the counts. A count only needs room
+/// for three digits, but a button this column can be clicked on needs a
+/// comfortable square, and the two must share one centre line or the counts
+/// stop lining up. So the column is the button, and the count is centred in it.
+const double kPanelTrailingWidth = 34;
+
+/// Side of a side-panel button: the row "…" menus and the section headers "+".
+///
+/// The button fills the trailing column exactly. Its box *is* its hit area and
+/// its hover highlight, so this single number is what decides how big those
+/// feel — there is no padding anywhere in the chain to adjust instead.
+///
+/// Do not try to keep a narrow column and let the button overflow it: Flutter
+/// clips hit-testing to the parent's bounds, so that grows the highlight while
+/// the clickable area stays narrow. The box has to be as large as the button.
+const double kPanelActionSize = kPanelTrailingWidth;
 
 /// Distance from the panel's right edge to the outer edge of that slot.
 ///
@@ -32,8 +49,12 @@ class PanelHeaderAction extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Height as well as width: the header Row would otherwise stretch the
+    // button taller than the rows' buttons, making the highlight a different
+    // shape in the two places.
     return SizedBox(
       width: kPanelTrailingWidth,
+      height: kPanelActionSize,
       child: Center(child: child),
     );
   }
@@ -82,7 +103,8 @@ class PanelTrailing extends StatelessWidget {
   }
 }
 
-/// The context-menu button used inside [PanelTrailing], sized to the column.
+/// The context-menu button used inside [PanelTrailing], centred on the column
+/// and sized to [kPanelActionSize].
 class PanelMenuButton extends StatelessWidget {
   final VoidCallback onPressed;
   final String? tooltip;
@@ -91,16 +113,54 @@ class PanelMenuButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return IconButton(
-      icon: const Icon(Icons.more_horiz, size: 18),
+    return PanelActionButton(
+      icon: Icons.more_horiz,
       onPressed: onPressed,
       tooltip: tooltip,
-      padding: EdgeInsets.zero,
-      constraints: const BoxConstraints.tightFor(
-        width: kPanelTrailingWidth,
-        height: kPanelTrailingWidth,
+    );
+  }
+}
+
+/// The one button shape the side panel uses: a [kPanelActionSize] square with
+/// no padding of its own, so its hit area and its hover highlight are exactly
+/// that square.
+///
+/// Both the row "…" menus and the header "+" buttons are this widget, which is
+/// what keeps them coherent — there is no second place where one of them can be
+/// sized by hand.
+class PanelActionButton extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onPressed;
+  final String? tooltip;
+
+  const PanelActionButton({
+    super.key,
+    required this.icon,
+    required this.onPressed,
+    this.tooltip,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      icon: Icon(icon, size: 18),
+      onPressed: onPressed,
+      tooltip: tooltip,
+      // Sized through `style` rather than `constraints` + `visualDensity`.
+      // Those two size the *button*, but leave the ink response inset within
+      // it, so the highlight and the hit area stay small however large the box
+      // is told to be — which is how the old 24px controls ended up with an
+      // 18px highlight. Pinning the three sizes here makes the button, its
+      // highlight and its hit area all exactly [kPanelActionSize], and
+      // shrinkWrap stops Material padding it back out to a 48px tap target,
+      // which would widen the column and push the counts off their line.
+      style: IconButton.styleFrom(
+        padding: EdgeInsets.zero,
+        minimumSize: const Size(kPanelActionSize, kPanelActionSize),
+        fixedSize: const Size(kPanelActionSize, kPanelActionSize),
+        maximumSize: const Size(kPanelActionSize, kPanelActionSize),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
       ),
-      visualDensity: VisualDensity.compact,
     );
   }
 }

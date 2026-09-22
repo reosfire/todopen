@@ -53,16 +53,7 @@ void main() {
                 child: PanelSection(
                   header: 'LISTS',
                   headerActions: [
-                    IconButton(
-                      icon: const Icon(Icons.add, size: 18),
-                      visualDensity: VisualDensity.compact,
-                      constraints: const BoxConstraints.tightFor(
-                        width: 28,
-                        height: 28,
-                      ),
-                      padding: EdgeInsets.zero,
-                      onPressed: () {},
-                    ),
+                    PanelActionButton(icon: Icons.add, onPressed: () {}),
                   ],
                   child: ListView(
                     children: [
@@ -164,6 +155,91 @@ void main() {
 
     final slot = tester.getRect(find.byType(PanelTrailing).first);
     expect(box.center.dx, slot.center.dx);
+  });
+
+  testWidgets('every panel button is one comfortable square', (tester) async {
+    tester.view.physicalSize = const Size(1200, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(harness(width: 280));
+    await tester.pumpAndSettle();
+
+    // The hit area and the hover highlight are the button's own box, so this
+    // is the number that decides whether the control feels big enough.
+    final buttons = tester
+        .renderObjectList<RenderBox>(find.byType(PanelActionButton))
+        .map((b) => b.size)
+        .toSet();
+
+    expect(buttons, {
+      const Size(kPanelActionSize, kPanelActionSize),
+    }, reason: 'the "+" and the "…" must be the same, larger square');
+
+    // The button fills the column, so its box is the whole hit area. If these
+    // ever diverge, the clickable region silently shrinks back to the smaller
+    // of the two — which is the bug this file exists to prevent.
+    expect(kPanelActionSize, kPanelTrailingWidth);
+
+    // A guard on the number itself: the old 24/28px controls were too small to
+    // hit comfortably, so the column must not drift back down there.
+    expect(kPanelActionSize, greaterThanOrEqualTo(32));
+  });
+
+  testWidgets('a bigger button does not move the counts', (tester) async {
+    tester.view.physicalSize = const Size(1200, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(harness(width: 280));
+    await tester.pumpAndSettle();
+
+    // Counts and buttons share one slot size, so a hovered row's slot sits on
+    // the same centre line as the plain counts.
+    final centres = _trailingCentres(tester);
+    expect(centres.length, 1, reason: 'overflow shifted a row: $centres');
+
+    for (final slot in tester.renderObjectList<RenderBox>(
+      find.byType(PanelTrailing),
+    )) {
+      expect(slot.size.width, kPanelTrailingWidth);
+    }
+
+    // The button is centred on that column despite being wider than it.
+    final menu = tester.getRect(find.byIcon(Icons.more_horiz)).center.dx;
+    expect((menu - centres.first).abs(), lessThan(0.5));
+  });
+
+  testWidgets('the highlight fills the button, not just the box', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1200, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(harness(width: 280));
+    await tester.pumpAndSettle();
+
+    // What the user sees and clicks is the InkWell, not the IconButton's own
+    // box. Sizing the box while Material keeps the ink inset inside it is a
+    // silent no-op — it is how a 24px control ended up with an 18px highlight
+    // — so the ink is measured directly.
+    // Scoped to the buttons: rows and ExpansionTiles have their own InkWells.
+    final inks = tester
+        .renderObjectList<RenderBox>(
+          find.descendant(
+            of: find.byType(PanelActionButton),
+            matching: find.byType(InkWell),
+          ),
+        )
+        .map((b) => b.size)
+        .toSet();
+
+    expect(inks, isNotEmpty, reason: 'no button ink found to measure');
+
+    expect(inks, {
+      const Size(kPanelActionSize, kPanelActionSize),
+    }, reason: 'the hover highlight is not the full button square');
   });
 
   testWidgets('alignment holds at other panel widths', (tester) async {
