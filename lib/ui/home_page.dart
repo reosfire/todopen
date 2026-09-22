@@ -35,9 +35,15 @@ class SearchAllIntent extends Intent {
   const SearchAllIntent();
 }
 
-/// Ctrl+F / Ctrl+Shift+F, with Cmd on macOS and iOS. Registered above the
-/// whole page so the shortcut fires wherever focus happens to be, including
-/// while a search is already open.
+/// Ctrl+F / Ctrl+Shift+F, with Cmd on macOS and iOS.
+///
+/// Also mounted as a `Shortcuts` map above the whole page, which is what makes
+/// the chords work while a descendant (the add-task field, the notes editor)
+/// holds focus. That path alone is not enough: `Shortcuts` only sees keys that
+/// bubble up the *focus* chain, so with focus sitting above the page — the
+/// route's own scope, which is where it lands after clicking any non-focusable
+/// surface — the chord reached nothing. [SearchShortcutListener] closes that
+/// gap by resolving this same map off the raw key stream.
 final Map<ShortcutActivator, Intent> searchShortcuts = {
   const SingleActivator(LogicalKeyboardKey.keyF, control: true):
       const SearchListIntent(),
@@ -48,6 +54,84 @@ final Map<ShortcutActivator, Intent> searchShortcuts = {
   const SingleActivator(LogicalKeyboardKey.keyF, meta: true, shift: true):
       const SearchAllIntent(),
 };
+
+/// Resolves [searchShortcuts] against a raw key event, or null if none match.
+///
+/// Longest-match-first, so Ctrl+Shift+F is never shadowed by the plain Ctrl+F
+/// activator, which `SingleActivator` would otherwise also accept.
+Intent? matchSearchShortcut(KeyEvent event) {
+  if (event is! KeyDownEvent) return null;
+  final state = HardwareKeyboard.instance;
+  Intent? match;
+  var matchedShift = false;
+  searchShortcuts.forEach((activator, intent) {
+    if (!activator.accepts(event, state)) return;
+    final shift = activator is SingleActivator && activator.shift;
+    if (match == null || (shift && !matchedShift)) {
+      match = intent;
+      matchedShift = shift;
+    }
+  });
+  return match;
+}
+
+/// Makes the search chords global rather than focus-dependent.
+///
+/// Listens on [HardwareKeyboard] directly, so the chords fire no matter where
+/// focus is — including nowhere. The page's `Shortcuts`/`Actions` pair still
+/// handles the focused case and runs first; this only covers what that misses,
+/// and it invokes through the same [Actions] lookup so both paths run the same
+/// callbacks. Nothing in the app binds Ctrl+F for its own purposes, so there
+/// is no inner handler for this to steal the chord from.
+class SearchShortcutListener extends StatefulWidget {
+  const SearchShortcutListener({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  State<SearchShortcutListener> createState() => _SearchShortcutListenerState();
+}
+
+class _SearchShortcutListenerState extends State<SearchShortcutListener> {
+  @override
+  void initState() {
+    super.initState();
+    HardwareKeyboard.instance.addHandler(_onKey);
+  }
+
+  @override
+  void dispose() {
+    HardwareKeyboard.instance.removeHandler(_onKey);
+    super.dispose();
+  }
+
+  bool _onKey(KeyEvent event) {
+    final intent = matchSearchShortcut(event);
+    if (intent == null) return false;
+
+    // If focus is already inside this subtree, the Shortcuts above has
+    // handled it; acting again would fire the callback twice.
+    if (_focusIsInside()) return false;
+
+    final action = Actions.maybeFind<Intent>(context, intent: intent);
+    if (action == null || !action.isEnabled(intent)) return false;
+    Actions.of(context).invokeAction(action, intent, context);
+    return true;
+  }
+
+  /// Whether primary focus sits under this widget, which is exactly when the
+  /// focus-based `Shortcuts` path will have handled the chord already.
+  bool _focusIsInside() {
+    final focused = FocusManager.instance.primaryFocus;
+    if (focused == null) return false;
+    final self = Focus.maybeOf(context);
+    if (self == null) return false;
+    return focused == self || focused.ancestors.contains(self);
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
+}
 
 // ───── Side panel geometry ─────
 
@@ -287,10 +371,11 @@ class _HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
-    // Wrapped around the whole page so Ctrl+F works wherever focus is. The
-    // Focus below only anchors the shortcut scope before anything has been
-    // clicked; it must not take primary focus itself, or it outranks the
-    // autofocus on a TextField and swallows that field's arrow keys.
+    // Two paths to the same actions. Shortcuts handles the chord while focus
+    // is inside the page; SearchShortcutListener catches it when focus is
+    // elsewhere or nowhere. The Focus below must not take primary focus
+    // itself, or it outranks the autofocus on a TextField and swallows that
+    // field's arrow keys — which is why it cannot anchor the chord alone.
     return Shortcuts(
       shortcuts: searchShortcuts,
       child: Actions(
@@ -310,7 +395,12 @@ class _HomePageState extends State<HomePage> {
             },
           ),
         },
-        child: homePageFocusWrapper(child: _buildPage(context)),
+        // Inside the focus wrapper so the listener can tell whether primary
+        // focus is under the page (Shortcuts already handled the chord) or
+        // outside it (only the global listener will catch it).
+        child: homePageFocusWrapper(
+          child: SearchShortcutListener(child: _buildPage(context)),
+        ),
       ),
     );
   }

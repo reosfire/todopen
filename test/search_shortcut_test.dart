@@ -272,4 +272,112 @@ void main() {
     await tester.pumpAndSettle();
     expect(fired, isNotEmpty, reason: 'Ctrl+F still reaches the shortcut');
   });
+
+  /// The chords must work wherever focus is, not only while a descendant of
+  /// the page holds it. `Shortcuts` alone only sees keys bubbling up the focus
+  /// chain, so clicking any non-focusable surface — which parks primary focus
+  /// on the route's own scope, above the page — used to kill Ctrl+F entirely.
+  /// `SearchShortcutListener` reads the raw key stream to cover that case.
+  group('global (focus-independent) path', () {
+    /// The real page wiring: Shortcuts + Actions, the page focus wrapper read
+    /// out of home_page.dart, and the listener inside it.
+    Future<List<Intent>> globalHarness(
+      WidgetTester tester, {
+      required TextEditingController controller,
+    }) async {
+      final fired = <Intent>[];
+      final pageFocus = homePageFocusWrapper();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Shortcuts(
+            shortcuts: searchShortcuts,
+            child: Actions(
+              actions: {
+                SearchListIntent: CallbackAction<SearchListIntent>(
+                  onInvoke: (i) => fired.add(i),
+                ),
+                SearchAllIntent: CallbackAction<SearchAllIntent>(
+                  onInvoke: (i) => fired.add(i),
+                ),
+              },
+              child: Focus(
+                autofocus: pageFocus.autofocus,
+                canRequestFocus: pageFocus.canRequestFocus,
+                child: SearchShortcutListener(
+                  child: Scaffold(
+                    body: TextField(controller: controller, autofocus: true),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      return fired;
+    }
+
+    testWidgets('fires with focus parked outside the page', (tester) async {
+      final controller = TextEditingController(text: 'hello');
+      addTearDown(controller.dispose);
+      final fired = await globalHarness(tester, controller: controller);
+
+      // What clicking a non-focusable surface does.
+      FocusManager.instance.primaryFocus?.unfocus();
+      await tester.pumpAndSettle();
+
+      await press(
+        tester,
+        LogicalKeyboardKey.keyF,
+        modifier: LogicalKeyboardKey.controlLeft,
+      );
+      expect(fired, [isA<SearchListIntent>()]);
+
+      await press(
+        tester,
+        LogicalKeyboardKey.keyF,
+        modifier: LogicalKeyboardKey.controlLeft,
+        shift: true,
+      );
+      expect(fired, [
+        isA<SearchListIntent>(),
+        isA<SearchAllIntent>(),
+      ], reason: 'shift variant is not shadowed on the global path either');
+    });
+
+    testWidgets('fires exactly once while a field inside is focused', (
+      tester,
+    ) async {
+      final controller = TextEditingController(text: 'hello');
+      addTearDown(controller.dispose);
+      final fired = await globalHarness(tester, controller: controller);
+
+      expect(FocusManager.instance.primaryFocus?.hasPrimaryFocus, isTrue);
+
+      // Both paths can see this key; only one may act on it.
+      await press(
+        tester,
+        LogicalKeyboardKey.keyF,
+        modifier: LogicalKeyboardKey.controlLeft,
+      );
+      expect(fired, hasLength(1), reason: 'no double fire');
+    });
+
+    testWidgets('leaves unrelated keys alone', (tester) async {
+      final controller = TextEditingController(text: 'hello');
+      addTearDown(controller.dispose);
+      final fired = await globalHarness(tester, controller: controller);
+
+      FocusManager.instance.primaryFocus?.unfocus();
+      await tester.pumpAndSettle();
+
+      await press(tester, LogicalKeyboardKey.keyF);
+      await press(
+        tester,
+        LogicalKeyboardKey.keyG,
+        modifier: LogicalKeyboardKey.controlLeft,
+      );
+      expect(fired, isEmpty);
+    });
+  });
 }
