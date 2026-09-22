@@ -5,6 +5,7 @@ import '../models/task.dart';
 import '../models/task_search.dart';
 import '../state/app_state.dart';
 import '../utils/uuid128.dart';
+import 'highlighted_text.dart';
 import 'sectioned_task_list.dart';
 
 /// Shows the results of a task search.
@@ -64,7 +65,7 @@ class SearchView extends StatelessWidget {
             selectedTaskId: selectedTaskId,
             onTaskSelected: onTaskSelected,
             titleBuilder: (context, task, style) =>
-                _HighlightedText(text: task.title, terms: terms, style: style),
+                HighlightedText(text: task.title, terms: terms, style: style),
             subtitleBuilder: (context, task) =>
                 _buildSubtitle(context, state, task, terms),
           ),
@@ -86,7 +87,7 @@ class SearchView extends StatelessWidget {
       final listName = state.listById(task.listId)?.name ?? '';
       if (listName.isNotEmpty) {
         parts.add(
-          _HighlightedText(
+          HighlightedText(
             text: listName,
             terms: terms,
             style: theme.textTheme.bodySmall?.copyWith(
@@ -114,7 +115,7 @@ class SearchView extends StatelessWidget {
                   color: t.color.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(4),
                 ),
-                child: _HighlightedText(
+                child: HighlightedText(
                   text: t.name,
                   terms: terms,
                   style: TextStyle(fontSize: 11, color: t.color),
@@ -142,7 +143,7 @@ class SearchView extends StatelessWidget {
               ),
             ),
             Expanded(
-              child: _HighlightedText(
+              child: HighlightedText(
                 text: excerpt,
                 terms: terms,
                 maxLines: 2,
@@ -220,61 +221,6 @@ class _Placeholder extends StatelessWidget {
           ],
         ],
       ),
-    );
-  }
-}
-
-/// Renders [text] with every occurrence of [terms] highlighted.
-class _HighlightedText extends StatelessWidget {
-  final String text;
-  final List<String> terms;
-  final TextStyle? style;
-  final int? maxLines;
-
-  const _HighlightedText({
-    required this.text,
-    required this.terms,
-    this.style,
-    this.maxLines,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final ranges = TaskSearch.highlightRanges(text, terms);
-    if (ranges.isEmpty) {
-      return Text(
-        text,
-        style: style,
-        maxLines: maxLines,
-        overflow: maxLines != null ? TextOverflow.ellipsis : null,
-      );
-    }
-
-    final theme = Theme.of(context);
-    final highlight = TextStyle(
-      backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.22),
-      fontWeight: FontWeight.w600,
-    );
-
-    final spans = <TextSpan>[];
-    var cursor = 0;
-    for (final r in ranges) {
-      if (r.start > cursor) {
-        spans.add(TextSpan(text: text.substring(cursor, r.start)));
-      }
-      spans.add(
-        TextSpan(text: text.substring(r.start, r.end), style: highlight),
-      );
-      cursor = r.end;
-    }
-    if (cursor < text.length) {
-      spans.add(TextSpan(text: text.substring(cursor)));
-    }
-
-    return Text.rich(
-      TextSpan(style: style, children: spans),
-      maxLines: maxLines,
-      overflow: maxLines != null ? TextOverflow.ellipsis : null,
     );
   }
 }

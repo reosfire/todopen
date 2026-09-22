@@ -8,7 +8,11 @@ import 'package:todopen/ui/home_page.dart';
 import 'package:todopen/ui/task_notes_panel.dart';
 import 'package:todopen/utils/uuid128.dart';
 
-/// Ctrl+F / Ctrl+Shift+F open search scoped to the list or to everything.
+/// Ctrl+F / Ctrl+Shift+F both open search over every task.
+///
+/// Finding a task *within* a list is not a chord: typing in that list's
+/// add-task field filters it in place. Both chords stay bound so the shift
+/// variant keeps working and is never shadowed by the plain one.
 ///
 /// `HomePage` itself needs the drift database to mount, so these drive the
 /// real shortcut map from `home_page.dart` over a stand-in for the page. That
@@ -66,7 +70,7 @@ void main() {
     return fired;
   }
 
-  testWidgets('Ctrl+F asks for a list-scoped search', (tester) async {
+  testWidgets('Ctrl+F opens search', (tester) async {
     final fired = await harness(tester);
     await press(
       tester,
@@ -77,7 +81,7 @@ void main() {
     expect(fired, [isA<SearchListIntent>()]);
   });
 
-  testWidgets('Ctrl+Shift+F asks for a global search', (tester) async {
+  testWidgets('Ctrl+Shift+F is not shadowed by Ctrl+F', (tester) async {
     final fired = await harness(tester);
     await press(
       tester,

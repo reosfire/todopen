@@ -10,7 +10,12 @@ class TaskListView extends StatelessWidget {
   final Uuid128 listId;
   final String? selectedTaskId;
   final void Function(Task task)? onTaskSelected;
-  const TaskListView({super.key, required this.listId, this.selectedTaskId, this.onTaskSelected});
+  const TaskListView({
+    super.key,
+    required this.listId,
+    this.selectedTaskId,
+    this.onTaskSelected,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -25,6 +30,7 @@ class TaskListView extends StatelessWidget {
           TaskSection(header: 'Completed', tasks: completed),
       ],
       inputHint: 'Add a task...',
+      filterWhileTyping: true,
       onAddTask: (title) => _addTask(state, title),
       onReorder: (sectionIndex, oldIndex, newIndex) {
         final section = sectionIndex == 0 ? pending : completed;

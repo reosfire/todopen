@@ -21,16 +21,19 @@ import 'search_view.dart';
 import 'accent_theme.dart';
 import 'side_panel.dart';
 
-/// Whether a search covers every task or only the selected list.
-enum SearchScope { global, list }
-
-/// Opens search over the selected list (Ctrl/Cmd+F). Falls back to a global
-/// search when what is selected has no single backing list.
+/// Opens search over every task (Ctrl/Cmd+F).
+///
+/// Searching *within* a list is not a mode: typing in that list's add-task
+/// field filters it in place, which also surfaces an existing task before the
+/// user adds a duplicate of it. So this chord goes straight to global search.
 class SearchListIntent extends Intent {
   const SearchListIntent();
 }
 
 /// Opens search over every task (Ctrl/Cmd+Shift+F).
+///
+/// The same destination as [SearchListIntent]; kept as its own intent so the
+/// shift chord stays bound and keeps working.
 class SearchAllIntent extends Intent {
   const SearchAllIntent();
 }
@@ -190,10 +193,9 @@ class _HomePageState extends State<HomePage> {
   double _smartListsHeight = _defaultSmartListsHeight;
   double _listsHeight = _defaultListsHeight;
 
-  /// Search state. [_searchScope] decides whether the query runs over every
-  /// task or only the list that was selected when search was opened.
+  /// Search state. Search always covers every task; narrowing to one list is
+  /// done by typing in that list's add-task field instead.
   bool _searchActive = false;
-  SearchScope _searchScope = SearchScope.global;
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocus = FocusNode();
@@ -261,12 +263,11 @@ class _HomePageState extends State<HomePage> {
     super.dispose();
   }
 
-  /// Opens the search field. A list-scoped search keeps the current list
-  /// selected so closing search returns to exactly where the user was.
-  void _openSearch(SearchScope scope, {bool closeDrawer = false}) {
+  /// Opens the search field. The current list stays selected so closing
+  /// search returns to exactly where the user was.
+  void _openSearch({bool closeDrawer = false}) {
     setState(() {
       _searchActive = true;
-      _searchScope = scope;
       _searchController.clear();
       _searchQuery = '';
       _selectedTask = null;
@@ -280,16 +281,15 @@ class _HomePageState extends State<HomePage> {
   /// Handles the Ctrl+F / Ctrl+Shift+F shortcuts.
   ///
   /// Pressing the shortcut while search is already open keeps the query and
-  /// selects it, so a second press retargets the scope or lets the user type
-  /// over what is there rather than silently discarding their typing.
-  void _searchShortcut(SearchScope scope) {
+  /// selects it, so a second press lets the user type over what is there
+  /// rather than silently discarding their typing.
+  void _searchShortcut() {
     if (!_searchActive) {
       // Not `closeDrawer`: that pops the navigator, and a shortcut can fire
       // with no drawer open, which would pop the page instead.
-      _openSearch(scope);
+      _openSearch();
       return;
     }
-    setState(() => _searchScope = scope);
     _searchFocus.requestFocus();
     _searchController.selection = TextSelection(
       baseOffset: 0,
@@ -314,16 +314,6 @@ class _HomePageState extends State<HomePage> {
       _selectedTask = null;
     });
     _searchFocus.unfocus();
-  }
-
-  /// The list a scoped search runs against, or null when searching globally.
-  /// Smart lists have no single backing list, and a list deleted while search
-  /// is open no longer resolves, so both fall back to a global search.
-  Uuid128? _searchListId(AppState state) {
-    if (_searchScope != SearchScope.list) return null;
-    final id = _selectedListId;
-    if (id == null || state.listById(id) == null) return null;
-    return id;
   }
 
   /// The color the content area is themed around: the selected list's own
@@ -382,15 +372,13 @@ class _HomePageState extends State<HomePage> {
         actions: {
           SearchListIntent: CallbackAction<SearchListIntent>(
             onInvoke: (_) {
-              _searchShortcut(
-                _selectedListId != null ? SearchScope.list : SearchScope.global,
-              );
+              _searchShortcut();
               return null;
             },
           ),
           SearchAllIntent: CallbackAction<SearchAllIntent>(
             onInvoke: (_) {
-              _searchShortcut(SearchScope.global);
+              _searchShortcut();
               return null;
             },
           ),
@@ -525,9 +513,7 @@ class _HomePageState extends State<HomePage> {
       actions: [
         IconButton(
           icon: const Icon(Icons.search),
-          onPressed: () => _openSearch(
-            _selectedListId != null ? SearchScope.list : SearchScope.global,
-          ),
+          onPressed: () => _openSearch(),
           tooltip: _searchTooltip(),
         ),
         if (state.syncing)
@@ -580,9 +566,7 @@ class _HomePageState extends State<HomePage> {
           const Spacer(),
           IconButton(
             icon: const Icon(Icons.search),
-            onPressed: () => _openSearch(
-              _selectedListId != null ? SearchScope.list : SearchScope.global,
-            ),
+            onPressed: () => _openSearch(),
             tooltip: _searchTooltip(),
           ),
           if (state.syncing)
@@ -605,77 +589,39 @@ class _HomePageState extends State<HomePage> {
   /// Label for the search button. The shortcut is only mentioned where there
   /// is a keyboard to press it on.
   String _searchTooltip() {
-    final label = _selectedListId != null ? 'Search this list' : 'Search';
+    const label = 'Search all tasks';
     if (_isMobile) return label;
     final mod = defaultTargetPlatform == TargetPlatform.macOS ? '⌘' : 'Ctrl+';
-    return '$label ($mod'
-        'F)  •  Search all tasks (${mod}Shift+F)';
+    return '$label (${mod}F)';
   }
 
-  /// The search input, plus a chip to switch between searching the current
-  /// list and searching everything.
+  /// The search input. Search always covers every task, so there is no scope
+  /// to choose here.
   Widget _buildSearchField(AppState state) {
     final theme = Theme.of(context);
-    final listName = _selectedListId != null
-        ? state.listById(_selectedListId!)?.name
-        : null;
-    final scopedAvailable = listName != null;
-    final scoped = _searchScope == SearchScope.list && scopedAvailable;
-
-    return Row(
-      children: [
-        Expanded(
-          child: TextField(
-            controller: _searchController,
-            focusNode: _searchFocus,
-            autofocus: true,
-            textInputAction: TextInputAction.search,
-            style: theme.textTheme.bodyLarge,
-            decoration: InputDecoration(
-              hintText: scoped
-                  ? 'Search in $listName...'
-                  : 'Search all tasks...',
-              border: InputBorder.none,
-              isDense: true,
-              suffixIcon: _searchQuery.isEmpty
-                  ? null
-                  : IconButton(
-                      icon: const Icon(Icons.clear, size: 18),
-                      onPressed: () {
-                        _searchController.clear();
-                        setState(() => _searchQuery = '');
-                        _searchFocus.requestFocus();
-                      },
-                      tooltip: 'Clear',
-                    ),
-            ),
-            onChanged: (value) => setState(() => _searchQuery = value),
-          ),
-        ),
-        if (scopedAvailable) ...[
-          const SizedBox(width: 8),
-          Tooltip(
-            message: scoped
-                ? 'Searching in $listName - tap to search everywhere'
-                : 'Searching everywhere - tap to search in $listName',
-            child: FilterChip(
-              label: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 120),
-                child: Text(
-                  scoped ? listName : 'All',
-                  overflow: TextOverflow.ellipsis,
-                  softWrap: false,
-                ),
+    return TextField(
+      controller: _searchController,
+      focusNode: _searchFocus,
+      autofocus: true,
+      textInputAction: TextInputAction.search,
+      style: theme.textTheme.bodyLarge,
+      decoration: InputDecoration(
+        hintText: 'Search all tasks...',
+        border: InputBorder.none,
+        isDense: true,
+        suffixIcon: _searchQuery.isEmpty
+            ? null
+            : IconButton(
+                icon: const Icon(Icons.clear, size: 18),
+                onPressed: () {
+                  _searchController.clear();
+                  setState(() => _searchQuery = '');
+                  _searchFocus.requestFocus();
+                },
+                tooltip: 'Clear',
               ),
-              selected: scoped,
-              visualDensity: VisualDensity.compact,
-              onSelected: (_) => setState(() {
-                _searchScope = scoped ? SearchScope.global : SearchScope.list;
-              }),
-            ),
-          ),
-        ],
-      ],
+      ),
+      onChanged: (value) => setState(() => _searchQuery = value),
     );
   }
 
@@ -890,9 +836,9 @@ class _HomePageState extends State<HomePage> {
     return ListTile(
       leading: const Icon(Icons.search, size: 20),
       title: const Text('Search'),
-      selected: _searchActive && _searchScope == SearchScope.global,
+      selected: _searchActive,
       dense: true,
-      onTap: () => _openSearch(SearchScope.global, closeDrawer: closeDrawer),
+      onTap: () => _openSearch(closeDrawer: closeDrawer),
     );
   }
 
@@ -1227,7 +1173,6 @@ class _HomePageState extends State<HomePage> {
     if (_searchActive) {
       listView = SearchView(
         query: _searchQuery,
-        listId: _searchListId(state),
         selectedTaskId: _selectedTask?.id.toString(),
         onTaskSelected: (t) {
           setState(() => _selectedTask = t);

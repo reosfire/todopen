@@ -9,7 +9,12 @@ class SmartListView extends StatelessWidget {
   final SmartList smartList;
   final String? selectedTaskId;
   final void Function(Task task)? onTaskSelected;
-  const SmartListView({super.key, required this.smartList, this.selectedTaskId, this.onTaskSelected});
+  const SmartListView({
+    super.key,
+    required this.smartList,
+    this.selectedTaskId,
+    this.onTaskSelected,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -21,6 +26,7 @@ class SmartListView extends StatelessWidget {
       sections: sections,
       showListName: true,
       inputHint: filter.hasInput ? 'Add a task...' : null,
+      filterWhileTyping: filter.hasInput,
       onAddTask: filter.hasInput
           ? (title) => _addTask(state, title, filter)
           : null,
