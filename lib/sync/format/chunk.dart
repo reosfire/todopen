@@ -65,7 +65,11 @@ class Chunk {
         if (mv.hlc > hi) hi = mv.hlc;
       }
     }
-    return Chunk(entities: entities, orderSnapshots: orderSnapshots, maxHlc: hi);
+    return Chunk(
+      entities: entities,
+      orderSnapshots: orderSnapshots,
+      maxHlc: hi,
+    );
   }
 
   // ───── Encoding ─────
@@ -163,11 +167,7 @@ class Chunk {
     return OpCodec.readValue(r);
   }
 
-  static void _writeOrder(
-    ByteWriter w,
-    OrderScope scope,
-    OrderSnapshot order,
-  ) {
+  static void _writeOrder(ByteWriter w, OrderScope scope, OrderSnapshot order) {
     w.u8(scope.kind.wire);
     OpCodec.writeUuid(w, scope.scopeId);
     w.u8(scope.lane);
@@ -232,11 +232,7 @@ class Chunk {
       orders[entry.$1] = entry.$2;
     }
 
-    return Chunk(
-      entities: entities,
-      orderSnapshots: orders,
-      maxHlc: maxHlc,
-    );
+    return Chunk(entities: entities, orderSnapshots: orders, maxHlc: maxHlc);
   }
 
   static ReplicatedEntity _readEntity(ByteReader r, StringPool pool) {

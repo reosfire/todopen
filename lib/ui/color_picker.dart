@@ -318,7 +318,9 @@ class _SliderRow extends StatelessWidget {
                   activeTrackColor: Colors.transparent,
                   inactiveTrackColor: Colors.transparent,
                   thumbColor: Colors.white,
-                  overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
+                  overlayShape: const RoundSliderOverlayShape(
+                    overlayRadius: 14,
+                  ),
                   thumbShape: const RoundSliderThumbShape(
                     enabledThumbRadius: 9,
                   ),

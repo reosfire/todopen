@@ -17,7 +17,6 @@ import 'replica_test.dart' show uid;
 void main() {
   _formatPinningTests();
 
-
   group('recurrence blob round-trip', () {
     test('covers every rule type', () {
       final rules = <RecurrenceRule>[
@@ -69,9 +68,7 @@ void main() {
         const TagsFilter(tagIds: {}),
       ];
       for (final f in filters) {
-        final back = DomainMapper.filterFromBlob(
-          DomainMapper.filterToBlob(f),
-        );
+        final back = DomainMapper.filterFromBlob(DomainMapper.filterToBlob(f));
         expect(back.runtimeType, f.runtimeType, reason: '$f');
         switch ((f, back)) {
           case (DateRangeFilter a, DateRangeFilter b):
@@ -196,8 +193,9 @@ void main() {
       // And the cleared value must actually read back as null.
       replica.applyAll(ops);
       expect(
-        DomainMapper.taskFrom(replica.get(EntityKind.task, uid(1))!)!
-            .scheduledDate,
+        DomainMapper.taskFrom(
+          replica.get(EntityKind.task, uid(1))!,
+        )!.scheduledDate,
         isNull,
       );
     });
@@ -212,8 +210,7 @@ void main() {
         colorValue: 0xFF26C6DA,
         folderId: uid(50),
       );
-      final replica = Replica()
-        ..applyAll(DomainMapper.createList(list, clock));
+      final replica = Replica()..applyAll(DomainMapper.createList(list, clock));
       final back = DomainMapper.listFrom(
         replica.get(EntityKind.list, uid(1))!,
       )!;
@@ -225,8 +222,7 @@ void main() {
     test('a list with no colour or folder reads back as null', () {
       final clock = HlcClock(deviceId: 1);
       final list = TaskList(id: uid(1), name: 'Inbox');
-      final replica = Replica()
-        ..applyAll(DomainMapper.createList(list, clock));
+      final replica = Replica()..applyAll(DomainMapper.createList(list, clock));
       final back = DomainMapper.listFrom(
         replica.get(EntityKind.list, uid(1))!,
       )!;
@@ -259,9 +255,13 @@ void _formatPinningTests() {
       final cases = <(RecurrenceRule, int, List<int>)>[
         (const DailyRecurrence(), 0, []),
         (const EveryNDaysRecurrence(3), 1, [3]),
-        (WeeklyRecurrence.fromDays([1, 3]), 2, [
-          WeeklyRecurrence.fromDays([1, 3]).weekdayBits,
-        ]),
+        (
+          WeeklyRecurrence.fromDays([1, 3]),
+          2,
+          [
+            WeeklyRecurrence.fromDays([1, 3]).weekdayBits,
+          ],
+        ),
         (const MonthlyRecurrence(15), 3, [15]),
         (const YearlyRecurrence(12, 25), 4, [12, 25]),
       ];

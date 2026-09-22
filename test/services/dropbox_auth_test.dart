@@ -28,11 +28,10 @@ class _Recorder {
       req.headers['Authorization']?.replaceFirst('Bearer ', '');
 }
 
-http.Response _tokenOk(String access, {int expiresIn = 14400}) =>
-    http.Response(
-      jsonEncode({'access_token': access, 'expires_in': expiresIn}),
-      200,
-    );
+http.Response _tokenOk(String access, {int expiresIn = 14400}) => http.Response(
+  jsonEncode({'access_token': access, 'expires_in': expiresIn}),
+  200,
+);
 
 bool _isToken(http.BaseRequest req) => req.url.path.contains('oauth2/token');
 
@@ -312,41 +311,44 @@ void main() {
   });
 
   group('code verifier lifecycle', () {
-    test('a successful exchange stores tokens and drops the verifier', () async {
-      SharedPreferences.setMockInitialValues({
-        'dbx_code_verifier': 'the-verifier',
-      });
+    test(
+      'a successful exchange stores tokens and drops the verifier',
+      () async {
+        SharedPreferences.setMockInitialValues({
+          'dbx_code_verifier': 'the-verifier',
+        });
 
-      final rec = _Recorder();
-      final service = DropboxService(
-        httpClient: rec.client((req) async {
-          if (_isToken(req)) {
-            return http.Response(
-              jsonEncode({
-                'access_token': 'new-access',
-                'refresh_token': 'new-refresh',
-                'expires_in': 14400,
-              }),
-              200,
-            );
-          }
-          return http.Response('{}', 200);
-        }),
-      );
+        final rec = _Recorder();
+        final service = DropboxService(
+          httpClient: rec.client((req) async {
+            if (_isToken(req)) {
+              return http.Response(
+                jsonEncode({
+                  'access_token': 'new-access',
+                  'refresh_token': 'new-refresh',
+                  'expires_in': 14400,
+                }),
+                200,
+              );
+            }
+            return http.Response('{}', 200);
+          }),
+        );
 
-      expect(await service.handleRedirectCode('auth-code'), isTrue);
+        expect(await service.handleRedirectCode('auth-code'), isTrue);
 
-      // The verifier reached Dropbox ...
-      final body = (rec.tokenRequests.single as http.Request).bodyFields;
-      expect(body['code_verifier'], 'the-verifier');
-      expect(body['grant_type'], 'authorization_code');
+        // The verifier reached Dropbox ...
+        final body = (rec.tokenRequests.single as http.Request).bodyFields;
+        expect(body['code_verifier'], 'the-verifier');
+        expect(body['grant_type'], 'authorization_code');
 
-      // ... and is gone afterwards, while the tokens persist.
-      final prefs = await SharedPreferences.getInstance();
-      expect(prefs.getString('dbx_code_verifier'), isNull);
-      expect(prefs.getString('dbx_refresh_token'), 'new-refresh');
-      expect(service.isSignedIn, isTrue);
-    });
+        // ... and is gone afterwards, while the tokens persist.
+        final prefs = await SharedPreferences.getInstance();
+        expect(prefs.getString('dbx_code_verifier'), isNull);
+        expect(prefs.getString('dbx_refresh_token'), 'new-refresh');
+        expect(service.isSignedIn, isTrue);
+      },
+    );
 
     test('a failed exchange still drops the single-use verifier', () async {
       // The auth code is spent either way, so keeping the verifier would

@@ -166,8 +166,7 @@ class DomainMapper {
       title: e.stringField(TaskField.title),
       notes: e.stringField(TaskField.notes),
       isCompleted: e.boolField(TaskField.isCompleted),
-      createdAt:
-          e.dateField(TaskField.createdAt) ?? e.createdAt.wallTime,
+      createdAt: e.dateField(TaskField.createdAt) ?? e.createdAt.wallTime,
       scheduledDate: e.dateField(TaskField.scheduledDate),
       recurrence: recurrenceFromBlob(e.blobField(TaskField.recurrence)),
       tagIds: Set<Uuid128>.from(e.uuidSetField(TaskField.tagIds)),
@@ -360,7 +359,11 @@ class DomainMapper {
       ops.add(SetFieldOp(hlc, EntityKind.list, l.id, field, value));
     }
 
-    set(ListField.name, StringValue(l.name), prev == null || prev.name != l.name);
+    set(
+      ListField.name,
+      StringValue(l.name),
+      prev == null || prev.name != l.name,
+    );
     set(
       ListField.color,
       l.colorValue == null
@@ -380,8 +383,13 @@ class DomainMapper {
     final hlc = clock.issue();
     return [
       CreateEntityOp(hlc, EntityKind.folder, f.id),
-      SetFieldOp(hlc, EntityKind.folder, f.id, FolderField.name,
-          StringValue(f.name)),
+      SetFieldOp(
+        hlc,
+        EntityKind.folder,
+        f.id,
+        FolderField.name,
+        StringValue(f.name),
+      ),
     ];
   }
 
@@ -407,20 +415,25 @@ class DomainMapper {
   static List<Op> updateTag(Tag next, Tag? prev, HlcClock clock) =>
       _tagFieldOps(next, clock, prev);
 
-  static List<Op> _tagFieldOps(
-    Tag t,
-    HlcClock clock,
-    Tag? prev, {
-    Hlc? stamp,
-  }) {
+  static List<Op> _tagFieldOps(Tag t, HlcClock clock, Tag? prev, {Hlc? stamp}) {
     final hlc = stamp ?? clock.issue();
     return [
       if (prev == null || prev.name != t.name)
-        SetFieldOp(hlc, EntityKind.tag, t.id, TagField.name,
-            StringValue(t.name)),
+        SetFieldOp(
+          hlc,
+          EntityKind.tag,
+          t.id,
+          TagField.name,
+          StringValue(t.name),
+        ),
       if (prev == null || prev.colorValue != t.colorValue)
-        SetFieldOp(hlc, EntityKind.tag, t.id, TagField.color,
-            IntValue(_colorIn(t.colorValue))),
+        SetFieldOp(
+          hlc,
+          EntityKind.tag,
+          t.id,
+          TagField.color,
+          IntValue(_colorIn(t.colorValue)),
+        ),
     ];
   }
 

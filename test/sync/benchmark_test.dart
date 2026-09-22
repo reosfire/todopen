@@ -21,8 +21,18 @@ void main() {
     final engine = engineFor(store, 1);
     final rnd = Random(42);
     const words = [
-      'review', 'draft', 'email', 'call', 'fix', 'ship', 'plan',
-      'buy', 'book', 'renew', 'file', 'read',
+      'review',
+      'draft',
+      'email',
+      'call',
+      'fix',
+      'ship',
+      'plan',
+      'buy',
+      'book',
+      'renew',
+      'file',
+      'read',
     ];
     for (var i = 0; i < taskCount; i++) {
       final title =
@@ -49,7 +59,11 @@ void main() {
       final perTask = report.bytesDown / 2000;
       // The old per-entity protobuf averaged ~120-180 B/task plus an HTTP
       // round-trip each; anything near that means the format regressed.
-      expect(perTask, lessThan(85), reason: '${perTask.toStringAsFixed(1)} B/task');
+      expect(
+        perTask,
+        lessThan(85),
+        reason: '${perTask.toStringAsFixed(1)} B/task',
+      );
 
       // ignore: avoid_print
       print(
@@ -67,8 +81,11 @@ void main() {
       final small = await engineFor(smallStore, 9).hydrate();
       final big = await engineFor(bigStore, 9).hydrate();
 
-      expect(big.requests, lessThanOrEqualTo(small.requests * 2),
-          reason: '20x the data must not mean 20x the requests');
+      expect(
+        big.requests,
+        lessThanOrEqualTo(small.requests * 2),
+        reason: '20x the data must not mean 20x the requests',
+      );
 
       // ignore: avoid_print
       print(
@@ -148,7 +165,9 @@ void main() {
       expect(store.writes, 2, reason: '300 edits, one segment');
 
       // ignore: avoid_print
-      print('300 offline edits: ${store.bytesWritten} B in ${store.writes} writes');
+      print(
+        '300 offline edits: ${store.bytesWritten} B in ${store.writes} writes',
+      );
     });
 
     test('catching up after missing many segments stays cheap', () async {

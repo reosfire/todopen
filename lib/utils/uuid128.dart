@@ -37,7 +37,9 @@ class Uuid128 {
 
   factory Uuid128.fromCompactString(String compactString) {
     if (compactString.length != 22) {
-      throw FormatException('Compact UUID string must be exactly 22 characters long');
+      throw FormatException(
+        'Compact UUID string must be exactly 22 characters long',
+      );
     }
 
     return Uuid128.fromBytes(base64Url.decode("$compactString=="));

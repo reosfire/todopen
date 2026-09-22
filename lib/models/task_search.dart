@@ -101,9 +101,7 @@ class TaskSearch {
       // Surface actionable work above things already done.
       if (!task.isCompleted) score += 30;
 
-      results.add(
-        TaskSearchResult(task: task, fields: fields, score: score),
-      );
+      results.add(TaskSearchResult(task: task, fields: fields, score: score));
     }
 
     results.sort((a, b) {

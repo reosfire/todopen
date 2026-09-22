@@ -74,10 +74,24 @@ void main() {
   group('field-level LWW', () {
     test('later write wins', () {
       final r = Replica();
-      r.apply(SetFieldOp(const Hlc(10, 0, 1), EntityKind.task, uid(1),
-          TaskField.title, const StringValue('old')));
-      r.apply(SetFieldOp(const Hlc(20, 0, 1), EntityKind.task, uid(1),
-          TaskField.title, const StringValue('new')));
+      r.apply(
+        SetFieldOp(
+          const Hlc(10, 0, 1),
+          EntityKind.task,
+          uid(1),
+          TaskField.title,
+          const StringValue('old'),
+        ),
+      );
+      r.apply(
+        SetFieldOp(
+          const Hlc(20, 0, 1),
+          EntityKind.task,
+          uid(1),
+          TaskField.title,
+          const StringValue('new'),
+        ),
+      );
       expect(
         r.get(EntityKind.task, uid(1))!.stringField(TaskField.title),
         'new',
@@ -86,10 +100,24 @@ void main() {
 
     test('earlier write arriving late does not clobber', () {
       final r = Replica();
-      r.apply(SetFieldOp(const Hlc(20, 0, 1), EntityKind.task, uid(1),
-          TaskField.title, const StringValue('new')));
-      r.apply(SetFieldOp(const Hlc(10, 0, 1), EntityKind.task, uid(1),
-          TaskField.title, const StringValue('old')));
+      r.apply(
+        SetFieldOp(
+          const Hlc(20, 0, 1),
+          EntityKind.task,
+          uid(1),
+          TaskField.title,
+          const StringValue('new'),
+        ),
+      );
+      r.apply(
+        SetFieldOp(
+          const Hlc(10, 0, 1),
+          EntityKind.task,
+          uid(1),
+          TaskField.title,
+          const StringValue('old'),
+        ),
+      );
       expect(
         r.get(EntityKind.task, uid(1))!.stringField(TaskField.title),
         'new',
@@ -102,10 +130,20 @@ void main() {
       final phone = Replica();
       final desktop = Replica();
 
-      final titleEdit = SetFieldOp(const Hlc(100, 0, 1), EntityKind.task,
-          uid(1), TaskField.title, const StringValue('Buy oat milk'));
-      final doneEdit = SetFieldOp(const Hlc(101, 0, 2), EntityKind.task,
-          uid(1), TaskField.isCompleted, const BoolValue(true));
+      final titleEdit = SetFieldOp(
+        const Hlc(100, 0, 1),
+        EntityKind.task,
+        uid(1),
+        TaskField.title,
+        const StringValue('Buy oat milk'),
+      );
+      final doneEdit = SetFieldOp(
+        const Hlc(101, 0, 2),
+        EntityKind.task,
+        uid(1),
+        TaskField.isCompleted,
+        const BoolValue(true),
+      );
 
       phone.apply(titleEdit);
       phone.apply(doneEdit);
@@ -123,10 +161,20 @@ void main() {
     test('ties broken deterministically by device id', () {
       final a = Replica();
       final b = Replica();
-      final x = SetFieldOp(const Hlc(50, 0, 1), EntityKind.task, uid(1),
-          TaskField.title, const StringValue('from device 1'));
-      final y = SetFieldOp(const Hlc(50, 0, 2), EntityKind.task, uid(1),
-          TaskField.title, const StringValue('from device 2'));
+      final x = SetFieldOp(
+        const Hlc(50, 0, 1),
+        EntityKind.task,
+        uid(1),
+        TaskField.title,
+        const StringValue('from device 1'),
+      );
+      final y = SetFieldOp(
+        const Hlc(50, 0, 2),
+        EntityKind.task,
+        uid(1),
+        TaskField.title,
+        const StringValue('from device 2'),
+      );
       a.apply(x);
       a.apply(y);
       b.apply(y);
@@ -162,10 +210,20 @@ void main() {
     test('field write on a deleted entity does not resurrect it', () {
       final r = Replica();
       r.apply(DeleteEntityOp(const Hlc(20, 0, 1), EntityKind.task, uid(1)));
-      r.apply(SetFieldOp(const Hlc(30, 0, 1), EntityKind.task, uid(1),
-          TaskField.title, const StringValue('zombie')));
-      expect(r.get(EntityKind.task, uid(1))!.isDeleted, isTrue,
-          reason: 'editing a task deleted elsewhere must not undelete it');
+      r.apply(
+        SetFieldOp(
+          const Hlc(30, 0, 1),
+          EntityKind.task,
+          uid(1),
+          TaskField.title,
+          const StringValue('zombie'),
+        ),
+      );
+      expect(
+        r.get(EntityKind.task, uid(1))!.isDeleted,
+        isTrue,
+        reason: 'editing a task deleted elsewhere must not undelete it',
+      );
     });
 
     test('explicit later create undeletes', () {
@@ -181,18 +239,17 @@ void main() {
 
     test('dense array defines order', () {
       final r = Replica();
-      r.apply(SetOrderOp(const Hlc(10, 0, 1), scope,
-          [uid(3), uid(1), uid(2)]));
-      expect(
-        r.orderedIds(scope, {uid(1), uid(2), uid(3)}),
-        [uid(3), uid(1), uid(2)],
-      );
+      r.apply(SetOrderOp(const Hlc(10, 0, 1), scope, [uid(3), uid(1), uid(2)]));
+      expect(r.orderedIds(scope, {uid(1), uid(2), uid(3)}), [
+        uid(3),
+        uid(1),
+        uid(2),
+      ]);
     });
 
     test('deleted ids drop out, unknown ids append deterministically', () {
       final r = Replica();
-      r.apply(SetOrderOp(const Hlc(10, 0, 1), scope,
-          [uid(3), uid(1), uid(2)]));
+      r.apply(SetOrderOp(const Hlc(10, 0, 1), scope, [uid(3), uid(1), uid(2)]));
       // uid(2) gone, uid(7) new and not in the array.
       final got = r.orderedIds(scope, {uid(1), uid(3), uid(7)});
       expect(got.sublist(0, 2), [uid(3), uid(1)]);
@@ -208,20 +265,24 @@ void main() {
 
     test('move to head', () {
       final r = Replica();
-      r.apply(SetOrderOp(const Hlc(10, 0, 1), scope,
-          [uid(1), uid(2), uid(3)]));
+      r.apply(SetOrderOp(const Hlc(10, 0, 1), scope, [uid(1), uid(2), uid(3)]));
       r.apply(MoveWithinOrderOp(const Hlc(20, 0, 1), scope, uid(3), null));
-      expect(r.orderedIds(scope, {uid(1), uid(2), uid(3)}),
-          [uid(3), uid(1), uid(2)]);
+      expect(r.orderedIds(scope, {uid(1), uid(2), uid(3)}), [
+        uid(3),
+        uid(1),
+        uid(2),
+      ]);
     });
 
     test('move after an anchor', () {
       final r = Replica();
-      r.apply(SetOrderOp(const Hlc(10, 0, 1), scope,
-          [uid(1), uid(2), uid(3)]));
+      r.apply(SetOrderOp(const Hlc(10, 0, 1), scope, [uid(1), uid(2), uid(3)]));
       r.apply(MoveWithinOrderOp(const Hlc(20, 0, 1), scope, uid(1), uid(2)));
-      expect(r.orderedIds(scope, {uid(1), uid(2), uid(3)}),
-          [uid(2), uid(1), uid(3)]);
+      expect(r.orderedIds(scope, {uid(1), uid(2), uid(3)}), [
+        uid(2),
+        uid(1),
+        uid(3),
+      ]);
     });
 
     test('move with a missing anchor appends rather than losing the item', () {
@@ -235,12 +296,18 @@ void main() {
     test('two devices moving different items both keep their intent', () {
       final a = Replica();
       final b = Replica();
-      final setup =
-          SetOrderOp(const Hlc(10, 0, 0), scope, [uid(1), uid(2), uid(3)]);
-      final moveA =
-          MoveWithinOrderOp(const Hlc(20, 0, 1), scope, uid(3), null);
-      final moveB =
-          MoveWithinOrderOp(const Hlc(21, 0, 2), scope, uid(1), uid(2));
+      final setup = SetOrderOp(const Hlc(10, 0, 0), scope, [
+        uid(1),
+        uid(2),
+        uid(3),
+      ]);
+      final moveA = MoveWithinOrderOp(const Hlc(20, 0, 1), scope, uid(3), null);
+      final moveB = MoveWithinOrderOp(
+        const Hlc(21, 0, 2),
+        scope,
+        uid(1),
+        uid(2),
+      );
 
       // Apply in HLC order on both, arriving via different paths.
       a.apply(setup);
@@ -250,10 +317,15 @@ void main() {
       b.apply(moveA);
       b.apply(moveB);
 
-      expect(a.orderedIds(scope, {uid(1), uid(2), uid(3)}),
-          b.orderedIds(scope, {uid(1), uid(2), uid(3)}));
-      expect(a.orderedIds(scope, {uid(1), uid(2), uid(3)}).toSet(),
-          {uid(1), uid(2), uid(3)});
+      expect(
+        a.orderedIds(scope, {uid(1), uid(2), uid(3)}),
+        b.orderedIds(scope, {uid(1), uid(2), uid(3)}),
+      );
+      expect(a.orderedIds(scope, {uid(1), uid(2), uid(3)}).toSet(), {
+        uid(1),
+        uid(2),
+        uid(3),
+      });
     });
 
     test('lanes are independent (pending vs completed)', () {
@@ -287,20 +359,42 @@ void main() {
             case 1:
               ops.add(DeleteEntityOp(hlc, EntityKind.task, target));
             case 2:
-              ops.add(SetFieldOp(hlc, EntityKind.task, target,
-                  TaskField.title, StringValue('t${rnd.nextInt(5)}')));
+              ops.add(
+                SetFieldOp(
+                  hlc,
+                  EntityKind.task,
+                  target,
+                  TaskField.title,
+                  StringValue('t${rnd.nextInt(5)}'),
+                ),
+              );
             case 3:
-              ops.add(SetFieldOp(hlc, EntityKind.task, target,
-                  TaskField.isCompleted, BoolValue(rnd.nextBool())));
+              ops.add(
+                SetFieldOp(
+                  hlc,
+                  EntityKind.task,
+                  target,
+                  TaskField.isCompleted,
+                  BoolValue(rnd.nextBool()),
+                ),
+              );
             case 4:
-              ops.add(SetOrderOp(
+              ops.add(
+                SetOrderOp(
                   hlc,
                   scope,
-                  List.generate(
-                      rnd.nextInt(5), (_) => uid(rnd.nextInt(8)))));
+                  List.generate(rnd.nextInt(5), (_) => uid(rnd.nextInt(8))),
+                ),
+              );
             default:
-              ops.add(MoveWithinOrderOp(hlc, scope, uid(rnd.nextInt(8)),
-                  rnd.nextBool() ? uid(rnd.nextInt(8)) : null));
+              ops.add(
+                MoveWithinOrderOp(
+                  hlc,
+                  scope,
+                  uid(rnd.nextInt(8)),
+                  rnd.nextBool() ? uid(rnd.nextInt(8)) : null,
+                ),
+              );
           }
         }
 
@@ -348,46 +442,86 @@ void main() {
       final rnd = Random(99);
       final ops = List<Op>.generate(
         30,
-        (i) => SetFieldOp(Hlc(1000 + i, 0, 1 + (i % 2)), EntityKind.task,
-            uid(i % 5), TaskField.title, StringValue('v$i')),
+        (i) => SetFieldOp(
+          Hlc(1000 + i, 0, 1 + (i % 2)),
+          EntityKind.task,
+          uid(i % 5),
+          TaskField.title,
+          StringValue('v$i'),
+        ),
       );
       final once = Replica()..applyAll(ops);
       final twice = Replica()
         ..applyAll(ops)
         ..applyAll(ops)
         ..applyAll(List<Op>.from(ops)..shuffle(rnd));
-      expect(snapshot(twice), snapshot(once),
-          reason: 'replaying a segment twice must change nothing');
+      expect(
+        snapshot(twice),
+        snapshot(once),
+        reason: 'replaying a segment twice must change nothing',
+      );
     });
 
     test('split-brain: two devices offline then exchange everything', () {
       // Shared starting point.
       final common = <Op>[
         CreateEntityOp(const Hlc(100, 0, 0), EntityKind.task, uid(1)),
-        SetFieldOp(const Hlc(101, 0, 0), EntityKind.task, uid(1),
-            TaskField.title, const StringValue('original')),
-        SetOrderOp(const Hlc(102, 0, 0),
-            OrderScope(EntityKind.task, uid(90), 0), [uid(1)]),
+        SetFieldOp(
+          const Hlc(101, 0, 0),
+          EntityKind.task,
+          uid(1),
+          TaskField.title,
+          const StringValue('original'),
+        ),
+        SetOrderOp(
+          const Hlc(102, 0, 0),
+          OrderScope(EntityKind.task, uid(90), 0),
+          [uid(1)],
+        ),
       ];
 
       // Device A works offline for a week.
       final aOps = <Op>[
-        SetFieldOp(const Hlc(200, 0, 1), EntityKind.task, uid(1),
-            TaskField.notes, const StringValue('phone notes')),
+        SetFieldOp(
+          const Hlc(200, 0, 1),
+          EntityKind.task,
+          uid(1),
+          TaskField.notes,
+          const StringValue('phone notes'),
+        ),
         CreateEntityOp(const Hlc(201, 0, 1), EntityKind.task, uid(2)),
-        SetFieldOp(const Hlc(202, 0, 1), EntityKind.task, uid(2),
-            TaskField.title, const StringValue('added on phone')),
-        MoveWithinOrderOp(const Hlc(203, 0, 1),
-            OrderScope(EntityKind.task, uid(90), 0), uid(2), null),
+        SetFieldOp(
+          const Hlc(202, 0, 1),
+          EntityKind.task,
+          uid(2),
+          TaskField.title,
+          const StringValue('added on phone'),
+        ),
+        MoveWithinOrderOp(
+          const Hlc(203, 0, 1),
+          OrderScope(EntityKind.task, uid(90), 0),
+          uid(2),
+          null,
+        ),
       ];
 
       // Device B works offline too, touching a different field.
       final bOps = <Op>[
-        SetFieldOp(const Hlc(210, 0, 2), EntityKind.task, uid(1),
-            TaskField.isCompleted, const BoolValue(true)),
+        SetFieldOp(
+          const Hlc(210, 0, 2),
+          EntityKind.task,
+          uid(1),
+          TaskField.isCompleted,
+          const BoolValue(true),
+        ),
         CreateEntityOp(const Hlc(211, 0, 2), EntityKind.task, uid(3)),
-        SetFieldOp(const Hlc(212, 0, 2), EntityKind.task, uid(3),
-            TaskField.title, const StringValue('added on desktop')),
+        SetFieldOp(
+          const Hlc(212, 0, 2),
+          EntityKind.task,
+          uid(3),
+          TaskField.title,
+          const StringValue('added on desktop'),
+        ),
       ];
 
       Replica build(List<List<Op>> batches) {
@@ -406,8 +540,11 @@ void main() {
       expect(t1.stringField(TaskField.title), 'original');
       expect(t1.stringField(TaskField.notes), 'phone notes');
       expect(t1.boolField(TaskField.isCompleted), isTrue);
-      expect(a.live(EntityKind.task).length, 3,
-          reason: 'both offline additions survive');
+      expect(
+        a.live(EntityKind.task).length,
+        3,
+        reason: 'both offline additions survive',
+      );
     });
   });
 
@@ -415,21 +552,34 @@ void main() {
     test('loading a chunk merges instead of overwriting newer state', () {
       final r = Replica();
       // Newer edit already applied from a segment.
-      r.apply(SetFieldOp(const Hlc(500, 0, 1), EntityKind.task, uid(1),
-          TaskField.title, const StringValue('newer from log')));
+      r.apply(
+        SetFieldOp(
+          const Hlc(500, 0, 1),
+          EntityKind.task,
+          uid(1),
+          TaskField.title,
+          const StringValue('newer from log'),
+        ),
+      );
 
       // Older base chunk arrives afterwards.
-      final stale = ReplicatedEntity(
-        kind: EntityKind.task,
-        id: uid(1),
-        createdAt: const Hlc(10, 0, 1),
-      )..setField(TaskField.title, const StringValue('older from base'),
-          const Hlc(100, 0, 1));
+      final stale =
+          ReplicatedEntity(
+            kind: EntityKind.task,
+            id: uid(1),
+            createdAt: const Hlc(10, 0, 1),
+          )..setField(
+            TaskField.title,
+            const StringValue('older from base'),
+            const Hlc(100, 0, 1),
+          );
       r.loadChunk(Chunk.build([stale], {}));
 
-      expect(r.get(EntityKind.task, uid(1))!.stringField(TaskField.title),
-          'newer from log',
-          reason: 'base must never clobber a newer logged edit');
+      expect(
+        r.get(EntityKind.task, uid(1))!.stringField(TaskField.title),
+        'newer from log',
+        reason: 'base must never clobber a newer logged edit',
+      );
     });
 
     test('unfolded moves survive a chunk round-trip', () {
@@ -453,22 +603,32 @@ void main() {
           ),
         );
       final members = {uid(1), uid(2), uid(3)};
-      expect(restored.orderedIds(scope, members),
-          r.orderedIds(scope, members));
+      expect(restored.orderedIds(scope, members), r.orderedIds(scope, members));
       expect(restored.orderSnapshots[scope]!.moves.length, 1);
     });
 
     test('round-trips through encode/decode preserving convergence', () {
       final r = Replica();
       r.apply(CreateEntityOp(const Hlc(10, 0, 1), EntityKind.task, uid(1)));
-      r.apply(SetFieldOp(const Hlc(11, 0, 1), EntityKind.task, uid(1),
-          TaskField.title, const StringValue('persisted')));
-      r.apply(SetOrderOp(const Hlc(12, 0, 1),
-          OrderScope(EntityKind.task, uid(90), 0), [uid(1)]));
+      r.apply(
+        SetFieldOp(
+          const Hlc(11, 0, 1),
+          EntityKind.task,
+          uid(1),
+          TaskField.title,
+          const StringValue('persisted'),
+        ),
+      );
+      r.apply(
+        SetOrderOp(
+          const Hlc(12, 0, 1),
+          OrderScope(EntityKind.task, uid(90), 0),
+          [uid(1)],
+        ),
+      );
       r.apply(DeleteEntityOp(const Hlc(13, 0, 1), EntityKind.tag, uid(5)));
 
-      final chunk =
-          Chunk.build(r.entities.values.toList(), r.orderSnapshots);
+      final chunk = Chunk.build(r.entities.values.toList(), r.orderSnapshots);
       final restored = Replica()..loadChunk(Chunk.decode(chunk.encode()));
 
       expect(snapshot(restored), snapshot(r));

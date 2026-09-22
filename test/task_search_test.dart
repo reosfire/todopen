@@ -31,14 +31,17 @@ Task _task(
 List<String> _titles(List<TaskSearchResult> results) =>
     results.map((r) => r.task.title).toList();
 
-List<TaskSearchResult> _search(String query, List<Task> tasks, {bool includeListNames = true}) =>
-    TaskSearch.search(
-      query,
-      tasks: tasks,
-      tags: [_urgent],
-      lists: [_listA, _listB],
-      includeListNames: includeListNames,
-    );
+List<TaskSearchResult> _search(
+  String query,
+  List<Task> tasks, {
+  bool includeListNames = true,
+}) => TaskSearch.search(
+  query,
+  tasks: tasks,
+  tags: [_urgent],
+  lists: [_listA, _listB],
+  includeListNames: includeListNames,
+);
 
 void main() {
   group('tokenize', () {
@@ -67,19 +70,18 @@ void main() {
     });
 
     test('matches notes', () {
-      final results = _search(
-        'receipt',
-        [_task('Buy milk', notes: 'keep the receipt')],
-      );
+      final results = _search('receipt', [
+        _task('Buy milk', notes: 'keep the receipt'),
+      ]);
       expect(results.single.matchedNotes, isTrue);
       expect(results.single.matchedTitle, isFalse);
     });
 
     test('matches tag names', () {
-      final results = _search(
-        'urgent',
-        [_task('Call bank', tagIds: {_urgent.id}), _task('Water plants')],
-      );
+      final results = _search('urgent', [
+        _task('Call bank', tagIds: {_urgent.id}),
+        _task('Water plants'),
+      ]);
       expect(_titles(results), ['Call bank']);
       expect(results.single.matchedTag, isTrue);
     });
@@ -90,11 +92,9 @@ void main() {
     });
 
     test('ignores list names when scoped to one list', () {
-      final results = _search(
-        'groceries',
-        [_task('Buy milk', list: _listA)],
-        includeListNames: false,
-      );
+      final results = _search('groceries', [
+        _task('Buy milk', list: _listA),
+      ], includeListNames: false);
       expect(results, isEmpty);
     });
 
@@ -105,10 +105,9 @@ void main() {
     });
 
     test('terms may match across different fields', () {
-      final results = _search(
-        'milk receipt',
-        [_task('Buy milk', notes: 'keep the receipt')],
-      );
+      final results = _search('milk receipt', [
+        _task('Buy milk', notes: 'keep the receipt'),
+      ]);
       expect(results, hasLength(1));
     });
 
@@ -138,35 +137,40 @@ void main() {
   });
 
   group('toSections', () {
-    test('splits pending and completed, omitting an empty completed section', () {
-      final pendingOnly = TaskSearch.toSections(
-        _search('milk', [_task('Buy milk')]),
-      );
-      expect(pendingOnly, hasLength(1));
-      expect(pendingOnly.single.header, isNull);
+    test(
+      'splits pending and completed, omitting an empty completed section',
+      () {
+        final pendingOnly = TaskSearch.toSections(
+          _search('milk', [_task('Buy milk')]),
+        );
+        expect(pendingOnly, hasLength(1));
+        expect(pendingOnly.single.header, isNull);
 
-      final both = TaskSearch.toSections(
-        _search('milk', [_task('Buy milk'), _task('Buy milk', isCompleted: true)]),
-      );
-      expect(both, hasLength(2));
-      expect(both[1].header, 'Completed');
-      expect(both[1].tasks.single.isCompleted, isTrue);
-    });
+        final both = TaskSearch.toSections(
+          _search('milk', [
+            _task('Buy milk'),
+            _task('Buy milk', isCompleted: true),
+          ]),
+        );
+        expect(both, hasLength(2));
+        expect(both[1].header, 'Completed');
+        expect(both[1].tasks.single.isCompleted, isTrue);
+      },
+    );
   });
 
   group('highlightRanges', () {
     test('finds every occurrence', () {
-      expect(
-        TaskSearch.highlightRanges('milk and more milk', ['milk']),
-        [(start: 0, end: 4), (start: 14, end: 18)],
-      );
+      expect(TaskSearch.highlightRanges('milk and more milk', ['milk']), [
+        (start: 0, end: 4),
+        (start: 14, end: 18),
+      ]);
     });
 
     test('merges overlapping ranges from different terms', () {
-      expect(
-        TaskSearch.highlightRanges('milkshake', ['milk', 'milks']),
-        [(start: 0, end: 5)],
-      );
+      expect(TaskSearch.highlightRanges('milkshake', ['milk', 'milks']), [
+        (start: 0, end: 5),
+      ]);
     });
 
     test('returns nothing for no match or empty input', () {
@@ -183,7 +187,9 @@ void main() {
     });
 
     test('collapses whitespace and includes the match', () {
-      final excerpt = TaskSearch.notesExcerpt('keep   the\nreceipt', ['receipt']);
+      final excerpt = TaskSearch.notesExcerpt('keep   the\nreceipt', [
+        'receipt',
+      ]);
       expect(excerpt, 'keep the receipt');
     });
 

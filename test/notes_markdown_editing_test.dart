@@ -39,7 +39,9 @@ void main() {
       ChangeNotifierProvider<AppState>.value(
         value: AppState(),
         child: MaterialApp(
-          home: Scaffold(body: TaskNotesPanel(task: makeTask(notes: notes))),
+          home: Scaffold(
+            body: TaskNotesPanel(task: makeTask(notes: notes)),
+          ),
         ),
       ),
     );
@@ -87,12 +89,7 @@ void main() {
       await tapTool(tester, ctrl, 'Bold  (Ctrl+B)', selection: sel);
       // Unwrapping relies on the markers sitting just outside the selection
       // the first toggle left behind.
-      await tapTool(
-        tester,
-        ctrl,
-        'Bold  (Ctrl+B)',
-        selection: ctrl.selection,
-      );
+      await tapTool(tester, ctrl, 'Bold  (Ctrl+B)', selection: ctrl.selection);
 
       expect(ctrl.text, 'hello world');
     });
@@ -354,10 +351,16 @@ fenced code
       // Dirty: the unsaved indicator is showing.
       ctrl.text = 'body edited';
       await tester.pump(const Duration(milliseconds: 16));
-      expect(tester.getTopLeft(editor), cleanOrigin,
-          reason: 'the unsaved indicator must not move the editor');
-      expect(tester.getSize(editor), cleanSize,
-          reason: 'the unsaved indicator must not resize the editor');
+      expect(
+        tester.getTopLeft(editor),
+        cleanOrigin,
+        reason: 'the unsaved indicator must not move the editor',
+      );
+      expect(
+        tester.getSize(editor),
+        cleanSize,
+        reason: 'the unsaved indicator must not resize the editor',
+      );
 
       // And back again, the way an autosave completing would leave it.
       ctrl.text = 'body';

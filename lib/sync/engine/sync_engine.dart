@@ -539,9 +539,7 @@ class SyncEngine {
     _loadedBaseGen = newGen;
     _loadedChunks
       ..clear()
-      ..addEntries(
-        newChunks.map((c) => MapEntry(c.shard, _chunkIdentity(c))),
-      );
+      ..addEntries(newChunks.map((c) => MapEntry(c.shard, _chunkIdentity(c))));
     _appliedSegments.clear();
 
     // Garbage-collect superseded files. Best effort: a failure here costs

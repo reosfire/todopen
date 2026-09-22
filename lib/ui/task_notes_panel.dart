@@ -240,13 +240,15 @@ class _TaskNotesPanelState extends State<TaskNotesPanel> {
 
     // Markers just outside the selection: the common case after a previous
     // toggle left the inner text selected.
-    final wrappedOutside = start >= n &&
+    final wrappedOutside =
+        start >= n &&
         end + n <= text.length &&
         text.substring(start - n, start) == token &&
         text.substring(end, end + n) == token;
     if (wrappedOutside) {
-      final stripped =
-          text.replaceRange(end, end + n, '').replaceRange(start - n, start, '');
+      final stripped = text
+          .replaceRange(end, end + n, '')
+          .replaceRange(start - n, start, '');
       _setText(
         stripped,
         TextSelection(baseOffset: start - n, extentOffset: end - n),
@@ -360,7 +362,8 @@ class _TaskNotesPanelState extends State<TaskNotesPanel> {
     final sel = _notesCtrl.selection;
     if (!sel.isValid) return KeyEventResult.ignored;
 
-    final accel = HardwareKeyboard.instance.isControlPressed ||
+    final accel =
+        HardwareKeyboard.instance.isControlPressed ||
         HardwareKeyboard.instance.isMetaPressed;
 
     if (accel) {
@@ -419,8 +422,9 @@ class _TaskNotesPanelState extends State<TaskNotesPanel> {
   bool _continueList(String text, int caret) {
     final lineStart = text.lastIndexOf('\n', caret > 0 ? caret - 1 : 0) + 1;
     final line = text.substring(lineStart, caret);
-    final match =
-        RegExp(r'^([ \t]*)([-*+]|\d+\.) +(\[[ xX]\] +)?').firstMatch(line);
+    final match = RegExp(
+      r'^([ \t]*)([-*+]|\d+\.) +(\[[ xX]\] +)?',
+    ).firstMatch(line);
     if (match == null) return false;
 
     if (line.substring(match.end).trim().isEmpty) {
@@ -642,8 +646,9 @@ class _TaskNotesPanelState extends State<TaskNotesPanel> {
             const SizedBox(height: 8),
             Text(
               'Nothing to preview yet',
-              style: theme.textTheme.bodyMedium
-                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
             ),
           ],
         ),
@@ -672,9 +677,9 @@ class _TaskNotesPanelState extends State<TaskNotesPanel> {
       opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
     }
     if (!opened && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not open $href')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Could not open $href')));
     }
   }
 
@@ -839,8 +844,8 @@ class _WordCount extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final style = Theme.of(context).textTheme.labelSmall?.copyWith(
-          color: Theme.of(context).colorScheme.onSurfaceVariant,
-        );
+      color: Theme.of(context).colorScheme.onSurfaceVariant,
+    );
 
     return ValueListenableBuilder<String>(
       valueListenable: text,
@@ -937,8 +942,9 @@ class _ModeChip extends StatelessWidget {
           curve: Curves.easeOut,
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
           decoration: BoxDecoration(
-            color:
-                active ? theme.colorScheme.primaryContainer : Colors.transparent,
+            color: active
+                ? theme.colorScheme.primaryContainer
+                : Colors.transparent,
             borderRadius: BorderRadius.circular(6),
           ),
           child: Row(

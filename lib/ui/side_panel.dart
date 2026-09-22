@@ -224,6 +224,7 @@ class PanelResizeHandle extends StatefulWidget {
 class _PanelResizeHandleState extends State<PanelResizeHandle> {
   bool _hovered = false;
   bool _dragging = false;
+
   /// See [_SectionResizeHandleState._overflow].
   double _overflow = 0;
 
@@ -318,9 +319,7 @@ class PanelSection extends StatelessWidget {
                     ),
                   ),
                 ),
-                ...headerActions.map(
-                  (a) => PanelHeaderAction(child: a),
-                ),
+                ...headerActions.map((a) => PanelHeaderAction(child: a)),
               ],
             ),
           ),

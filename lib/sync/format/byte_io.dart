@@ -203,9 +203,7 @@ class ByteReader {
 
   Uint8List bytesCopy(int n) {
     _need(n);
-    final copy = Uint8List.fromList(
-      Uint8List.sublistView(buf, _pos, _pos + n),
-    );
+    final copy = Uint8List.fromList(Uint8List.sublistView(buf, _pos, _pos + n));
     _pos += n;
     return copy;
   }

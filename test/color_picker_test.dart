@@ -29,8 +29,7 @@ void main() {
   });
 
   group('ColorPickerField', () {
-    Widget wrap(Widget child) =>
-        MaterialApp(home: Scaffold(body: child));
+    Widget wrap(Widget child) => MaterialApp(home: Scaffold(body: child));
 
     testWidgets('reports the preset that was tapped', (tester) async {
       int? picked;
@@ -50,12 +49,7 @@ void main() {
 
     testWidgets('offers a no-color swatch only when allowed', (tester) async {
       await tester.pumpWidget(
-        wrap(
-          ColorPickerField(
-            value: kPresetColors.first,
-            onChanged: (_) {},
-          ),
-        ),
+        wrap(ColorPickerField(value: kPresetColors.first, onChanged: (_) {})),
       );
       // presets + custom
       expect(
@@ -65,11 +59,7 @@ void main() {
 
       await tester.pumpWidget(
         wrap(
-          ColorPickerField(
-            value: null,
-            allowNoColor: true,
-            onChanged: (_) {},
-          ),
+          ColorPickerField(value: null, allowNoColor: true, onChanged: (_) {}),
         ),
       );
       // default + presets + custom
@@ -79,8 +69,9 @@ void main() {
       );
     });
 
-    testWidgets('a custom color picked in the dialog reaches onChanged',
-        (tester) async {
+    testWidgets('a custom color picked in the dialog reaches onChanged', (
+      tester,
+    ) async {
       int? picked;
       await tester.pumpWidget(
         wrap(
@@ -106,12 +97,11 @@ void main() {
       expect(kPresetColors.contains(picked), isFalse);
     });
 
-    testWidgets('an out-of-preset value selects the custom swatch',
-        (tester) async {
+    testWidgets('an out-of-preset value selects the custom swatch', (
+      tester,
+    ) async {
       await tester.pumpWidget(
-        wrap(
-          ColorPickerField(value: 0xFF123456, onChanged: (_) {}),
-        ),
+        wrap(ColorPickerField(value: 0xFF123456, onChanged: (_) {})),
       );
 
       final custom = tester.widget<Container>(

@@ -91,24 +91,22 @@ class Hlc implements Comparable<Hlc> {
   static Hlc readFrom(Uint8List src, int offset) {
     // Reassemble the two 24-bit halves with multiplication, for the same
     // reason writeTo splits them: shifts past bit 31 are not portable.
-    final hi =
-        (src[offset] << 16) | (src[offset + 1] << 8) | src[offset + 2];
+    final hi = (src[offset] << 16) | (src[offset + 1] << 8) | src[offset + 2];
     final lo =
         (src[offset + 3] << 16) | (src[offset + 4] << 8) | src[offset + 5];
     final physical = hi * 0x1000000 + lo;
     final counter = (src[offset + 6] << 8) | src[offset + 7];
     final deviceId =
         ((src[offset + 8] << 24) |
-                (src[offset + 9] << 16) |
-                (src[offset + 10] << 8) |
-                src[offset + 11]) &
-            0xFFFFFFFF;
+            (src[offset + 9] << 16) |
+            (src[offset + 10] << 8) |
+            src[offset + 11]) &
+        0xFFFFFFFF;
     return Hlc(physical, counter, deviceId);
   }
 
   @override
-  String toString() =>
-      'Hlc($physical.$counter@${deviceId.toRadixString(16)})';
+  String toString() => 'Hlc($physical.$counter@${deviceId.toRadixString(16)})';
 }
 
 /// Generates HLC timestamps for one device.

@@ -48,8 +48,8 @@ class Replica {
   ReplicatedEntity? get(EntityKind kind, Uuid128 id) => entities[(kind, id)];
 
   /// Live (non-tombstoned) entities of one kind.
-  Iterable<ReplicatedEntity> live(EntityKind kind) => entities.values
-      .where((e) => e.kind == kind && !e.isDeleted);
+  Iterable<ReplicatedEntity> live(EntityKind kind) =>
+      entities.values.where((e) => e.kind == kind && !e.isDeleted);
 
   /// The dense ordering array for [scope], filtered to ids that still exist
   /// and are live, with any live-but-unordered ids appended.

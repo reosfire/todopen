@@ -72,16 +72,18 @@ Future<String?> openAuthPopupAndWaitForCode(String authUrl) {
     pollTimer.cancel();
   }
 
-  jsListener = ((web.Event event) {
-    final msg = event as web.MessageEvent;
-    final data = msg.data;
-    if (data == null || !data.isA<JSString>()) return;
-    final str = (data as JSString).toDart;
-    if (!str.startsWith('dropbox_code:')) return;
-    final code = str.substring('dropbox_code:'.length);
-    cleanup();
-    completer.complete(code);
-  }).toJS as web.EventListener;
+  jsListener =
+      ((web.Event event) {
+            final msg = event as web.MessageEvent;
+            final data = msg.data;
+            if (data == null || !data.isA<JSString>()) return;
+            final str = (data as JSString).toDart;
+            if (!str.startsWith('dropbox_code:')) return;
+            final code = str.substring('dropbox_code:'.length);
+            cleanup();
+            completer.complete(code);
+          }).toJS
+          as web.EventListener;
 
   channel.addEventListener('message', jsListener);
 

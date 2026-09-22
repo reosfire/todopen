@@ -14,8 +14,7 @@ class Stamped<T> {
   const Stamped(this.value, this.hlc);
 
   /// Keep whichever write is later in HLC order.
-  Stamped<T> mergeWith(Stamped<T> other) =>
-      other.hlc > hlc ? other : this;
+  Stamped<T> mergeWith(Stamped<T> other) => other.hlc > hlc ? other : this;
 }
 
 /// A replicated entity: a bag of stamped fields plus lifecycle stamps.

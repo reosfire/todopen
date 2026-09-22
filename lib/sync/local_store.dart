@@ -98,8 +98,7 @@ class LocalStore {
       if (parsed != null) return parsed;
     }
     // 31 bits keeps it positive and inside the HLC's 32-bit slot.
-    final generated =
-        DateTime.now().microsecondsSinceEpoch.abs() % 0x7FFFFFFF;
+    final generated = DateTime.now().microsecondsSinceEpoch.abs() % 0x7FFFFFFF;
     await _putString(_keyDeviceId, generated.toString());
     return generated;
   }
@@ -185,16 +184,16 @@ class LocalStore {
   }
 
   Future<String?> _getString(String key) async {
-    final row =
-        await (_db.select(
-          _db.uiStateEntries,
-        )..where((t) => t.key.equals(key))).getSingleOrNull();
+    final row = await (_db.select(
+      _db.uiStateEntries,
+    )..where((t) => t.key.equals(key))).getSingleOrNull();
     return row?.value;
   }
 
   Future<void> _deleteBlob(String key) async {
-    await (_db.delete(_db.uiStateEntries)..where((t) => t.key.equals(key)))
-        .go();
+    await (_db.delete(
+      _db.uiStateEntries,
+    )..where((t) => t.key.equals(key))).go();
   }
 }
 

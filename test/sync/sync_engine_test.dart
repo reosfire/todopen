@@ -218,52 +218,57 @@ void main() {
       // Every segment the manifest lists must exist on the store.
       final m = Manifest.decode(store.files[SyncEngine.manifestPath]!);
       for (final s in m.segments) {
-        expect(store.files.containsKey(s.path), isTrue,
-            reason: 'manifest must not reference a missing segment ${s.path}');
+        expect(
+          store.files.containsKey(s.path),
+          isTrue,
+          reason: 'manifest must not reference a missing segment ${s.path}',
+        );
       }
     });
 
-    test('a device that never wins still converges after retry budget',
-        () async {
-      final store = FakeStore();
-      final a = engineFor(store, 1);
-      addTask(a, uid(1), 'seed');
-      await a.sync();
+    test(
+      'a device that never wins still converges after retry budget',
+      () async {
+        final store = FakeStore();
+        final a = engineFor(store, 1);
+        addTask(a, uid(1), 'seed');
+        await a.sync();
 
-      final b = engineFor(store, 2);
-      await b.sync();
-      addTask(b, uid(2), 'b work');
+        final b = engineFor(store, 2);
+        await b.sync();
+        addTask(b, uid(2), 'b work');
 
-      // Interfere on every CAS but one, then let it through.
-      var count = 0;
-      store.beforeCas = (path) async {
-        if (path != SyncEngine.manifestPath) return;
-        count++;
-        if (count > 3) return;
-        final other = engineFor(store, 90 + count);
-        await other.sync();
-        other.record(
-          SetFieldOp(
-            other.clock.issue(),
-            EntityKind.task,
-            uid(1),
-            TaskField.notes,
-            StringValue('interference $count'),
-          ),
-        );
-        final saved = store.beforeCas;
+        // Interfere on every CAS but one, then let it through.
+        var count = 0;
+        store.beforeCas = (path) async {
+          if (path != SyncEngine.manifestPath) return;
+          count++;
+          if (count > 3) return;
+          final other = engineFor(store, 90 + count);
+          await other.sync();
+          other.record(
+            SetFieldOp(
+              other.clock.issue(),
+              EntityKind.task,
+              uid(1),
+              TaskField.notes,
+              StringValue('interference $count'),
+            ),
+          );
+          final saved = store.beforeCas;
+          store.beforeCas = null;
+          await other.sync();
+          store.beforeCas = saved;
+        };
+
+        await b.sync();
         store.beforeCas = null;
-        await other.sync();
-        store.beforeCas = saved;
-      };
+        await b.sync();
 
-      await b.sync();
-      store.beforeCas = null;
-      await b.sync();
-
-      expect(b.replica.get(EntityKind.task, uid(2)), isNotNull);
-      expect(b.pendingOpCount, 0);
-    });
+        expect(b.replica.get(EntityKind.task, uid(2)), isNotNull);
+        expect(b.pendingOpCount, 0);
+      },
+    );
   });
 
   group('compaction', () {
@@ -312,8 +317,10 @@ void main() {
       await a.sync();
 
       final gen1 = Manifest.decode(store.files[SyncEngine.manifestPath]!);
-      final shardsWithTasks =
-          gen1.chunks.where((c) => c.shard != 0).map((c) => c.shard).toSet();
+      final shardsWithTasks = gen1.chunks
+          .where((c) => c.shard != 0)
+          .map((c) => c.shard)
+          .toSet();
       expect(shardsWithTasks.length, greaterThanOrEqualTo(1));
 
       // Touch only list A's task, then force compaction.
@@ -344,8 +351,11 @@ void main() {
       // Chunks whose content did not change keep their old generation,
       // proving they were carried by reference rather than rewritten.
       final carried = gen2.chunks.where((c) => c.gen < gen2.baseGen).toList();
-      expect(carried, isNotEmpty,
-          reason: 'untouched shards must not be rewritten');
+      expect(
+        carried,
+        isNotEmpty,
+        reason: 'untouched shards must not be rewritten',
+      );
     });
 
     test('compaction losing its CAS leaves the store consistent', () async {
@@ -423,12 +433,18 @@ void main() {
       final fresh = engineFor(store, 2);
       await fresh.hydrate();
 
-      expect(fresh.replica.get(EntityKind.task, uid(1)), isNull,
-          reason: 'tombstone past retention should be forgotten');
+      expect(
+        fresh.replica.get(EntityKind.task, uid(1)),
+        isNull,
+        reason: 'tombstone past retention should be forgotten',
+      );
       final recent = fresh.replica.get(EntityKind.task, uid(2));
       expect(recent, isNotNull);
-      expect(recent!.isDeleted, isTrue,
-          reason: 'recent tombstone must survive so offline peers see it');
+      expect(
+        recent!.isDeleted,
+        isTrue,
+        reason: 'recent tombstone must survive so offline peers see it',
+      );
     });
   });
 
@@ -449,8 +465,11 @@ void main() {
 
       expect(fresh.replica.live(EntityKind.task).length, 2000);
       // Manifest + at most one chunk per shard. The old design needed 2001.
-      expect(report.requests, lessThanOrEqualTo(1 + 16),
-          reason: 'cold start must not scale with task count');
+      expect(
+        report.requests,
+        lessThanOrEqualTo(1 + 16),
+        reason: 'cold start must not scale with task count',
+      );
       expect(store.reads, lessThanOrEqualTo(17));
     });
 
@@ -476,9 +495,13 @@ void main() {
       );
       await a.sync(allowCompaction: false);
 
-      expect(store.bytesWritten, lessThan(400),
-          reason: 'one checkbox must not rewrite the dataset '
-              '(base is $baseSize bytes)');
+      expect(
+        store.bytesWritten,
+        lessThan(400),
+        reason:
+            'one checkbox must not rewrite the dataset '
+            '(base is $baseSize bytes)',
+      );
       expect(store.writes, 2, reason: 'one segment + one manifest');
     });
 
@@ -503,8 +526,11 @@ void main() {
       }
       await a.sync(allowCompaction: false);
 
-      expect(store.writes, 2,
-          reason: '200 offline edits batch into a single segment upload');
+      expect(
+        store.writes,
+        2,
+        reason: '200 offline edits batch into a single segment upload',
+      );
     });
   });
 
@@ -528,21 +554,23 @@ void main() {
       expect(fresh.replica, isNotNull);
     });
 
-    test('corrupt manifest surfaces as an error rather than silent loss',
-        () async {
-      final store = FakeStore();
-      final a = engineFor(store, 1);
-      addTask(a, uid(1), 'x');
-      await a.sync();
+    test(
+      'corrupt manifest surfaces as an error rather than silent loss',
+      () async {
+        final store = FakeStore();
+        final a = engineFor(store, 1);
+        addTask(a, uid(1), 'x');
+        await a.sync();
 
-      final good = store.files[SyncEngine.manifestPath]!;
-      final bad = Uint8List.fromList(good);
-      bad[bad.length ~/ 2] ^= 0xFF;
-      store.files[SyncEngine.manifestPath] = bad;
+        final good = store.files[SyncEngine.manifestPath]!;
+        final bad = Uint8List.fromList(good);
+        bad[bad.length ~/ 2] ^= 0xFF;
+        store.files[SyncEngine.manifestPath] = bad;
 
-      final fresh = engineFor(store, 2);
-      expect(fresh.hydrate(), throwsA(isA<Exception>()));
-    });
+        final fresh = engineFor(store, 2);
+        expect(fresh.hydrate(), throwsA(isA<Exception>()));
+      },
+    );
 
     test('empty store hydrates to an empty replica', () async {
       final store = FakeStore();
@@ -591,48 +619,50 @@ void main() {
       );
     });
 
-    test('concurrent reorders on two devices converge without losing tasks',
-        () async {
-      final store = FakeStore();
-      final a = engineFor(store, 1);
-      final b = engineFor(store, 2);
-      final list = uid(500);
-      final scope = OrderScope(EntityKind.task, list, 0);
+    test(
+      'concurrent reorders on two devices converge without losing tasks',
+      () async {
+        final store = FakeStore();
+        final a = engineFor(store, 1);
+        final b = engineFor(store, 2);
+        final list = uid(500);
+        final scope = OrderScope(EntityKind.task, list, 0);
 
-      for (var i = 1; i <= 5; i++) {
-        addTask(a, uid(i), 'task $i', listId: list);
-      }
-      a.record(
-        SetOrderOp(a.clock.issue(), scope, [
-          uid(1),
-          uid(2),
-          uid(3),
-          uid(4),
-          uid(5),
-        ]),
-      );
-      await a.sync();
-      await b.sync();
+        for (var i = 1; i <= 5; i++) {
+          addTask(a, uid(i), 'task $i', listId: list);
+        }
+        a.record(
+          SetOrderOp(a.clock.issue(), scope, [
+            uid(1),
+            uid(2),
+            uid(3),
+            uid(4),
+            uid(5),
+          ]),
+        );
+        await a.sync();
+        await b.sync();
 
-      a.record(MoveWithinOrderOp(a.clock.issue(), scope, uid(5), null));
-      b.record(MoveWithinOrderOp(b.clock.issue(), scope, uid(1), uid(3)));
+        a.record(MoveWithinOrderOp(a.clock.issue(), scope, uid(5), null));
+        b.record(MoveWithinOrderOp(b.clock.issue(), scope, uid(1), uid(3)));
 
-      await a.sync();
-      await b.sync();
-      await a.sync();
-      await b.sync();
+        await a.sync();
+        await b.sync();
+        await a.sync();
+        await b.sync();
 
-      final members = {uid(1), uid(2), uid(3), uid(4), uid(5)};
-      expect(
-        a.replica.orderedIds(scope, members),
-        b.replica.orderedIds(scope, members),
-        reason: 'both devices must agree on the final order',
-      );
-      expect(
-        a.replica.orderedIds(scope, members).toSet(),
-        members,
-        reason: 'no task may be lost or duplicated by a concurrent reorder',
-      );
-    });
+        final members = {uid(1), uid(2), uid(3), uid(4), uid(5)};
+        expect(
+          a.replica.orderedIds(scope, members),
+          b.replica.orderedIds(scope, members),
+          reason: 'both devices must agree on the final order',
+        );
+        expect(
+          a.replica.orderedIds(scope, members).toSet(),
+          members,
+          reason: 'no task may be lost or duplicated by a concurrent reorder',
+        );
+      },
+    );
   });
 }

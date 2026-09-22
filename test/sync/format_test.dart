@@ -169,14 +169,17 @@ void main() {
       expect(b > a, isTrue, reason: 'clock going back must not break order');
     });
 
-    test('observing a remote timestamp makes later local events sort after', () {
-      const t = 1000;
-      final clock = HlcClock(deviceId: 1, now: () => t);
-      const remote = Hlc(5000, 3, 99);
-      clock.observe(remote);
-      final local = clock.issue();
-      expect(local > remote, isTrue);
-    });
+    test(
+      'observing a remote timestamp makes later local events sort after',
+      () {
+        const t = 1000;
+        final clock = HlcClock(deviceId: 1, now: () => t);
+        const remote = Hlc(5000, 3, 99);
+        clock.observe(remote);
+        final local = clock.issue();
+        expect(local > remote, isTrue);
+      },
+    );
 
     test('ignores implausible future timestamps', () {
       const t = 1000;
@@ -298,11 +301,10 @@ void main() {
         const BoolValue(false),
       ),
       DeleteEntityOp(const Hlc(101, 0, 1), EntityKind.tag, uid(9)),
-      SetOrderOp(
-        const Hlc(102, 0, 1),
-        OrderScope(EntityKind.task, uid(5), 0),
-        [uid(1), uid(2)],
-      ),
+      SetOrderOp(const Hlc(102, 0, 1), OrderScope(EntityKind.task, uid(5), 0), [
+        uid(1),
+        uid(2),
+      ]),
       MoveWithinOrderOp(
         const Hlc(103, 0, 1),
         OrderScope(EntityKind.task, uid(5), 0),
@@ -381,10 +383,10 @@ void main() {
     Chunk sample() {
       final e1 =
           ReplicatedEntity(
-            kind: EntityKind.task,
-            id: uid(1),
-            createdAt: const Hlc(10, 0, 1),
-          )
+              kind: EntityKind.task,
+              id: uid(1),
+              createdAt: const Hlc(10, 0, 1),
+            )
             ..setField(
               TaskField.title,
               const StringValue('Shared Name'),
@@ -416,13 +418,16 @@ void main() {
         createdAt: const Hlc(9, 0, 1),
         deletedAt: const Hlc(20, 0, 2),
       );
-      return Chunk.build([e1, e2, e3], {
-        OrderScope(EntityKind.task, uid(2), 0): OrderSnapshot(
-          baseline: [uid(1), uid(5)],
-          baselineHlc: const Hlc(15, 0, 1),
-          moves: const [],
-        ),
-      });
+      return Chunk.build(
+        [e1, e2, e3],
+        {
+          OrderScope(EntityKind.task, uid(2), 0): OrderSnapshot(
+            baseline: [uid(1), uid(5)],
+            baselineHlc: const Hlc(15, 0, 1),
+            moves: const [],
+          ),
+        },
+      );
     }
 
     test('round-trips entities, tombstones and orders', () {
@@ -500,8 +505,20 @@ void main() {
         baseGen: 3,
         nextSeq: 17,
         chunks: [
-          ChunkRef(shard: 0, gen: 3, size: 4096, maxHlc: Hlc(99, 0, 1), crc: 0x1234),
-          ChunkRef(shard: 5, gen: 3, size: 8192, maxHlc: Hlc(98, 0, 1), crc: 0xABCD),
+          ChunkRef(
+            shard: 0,
+            gen: 3,
+            size: 4096,
+            maxHlc: Hlc(99, 0, 1),
+            crc: 0x1234,
+          ),
+          ChunkRef(
+            shard: 5,
+            gen: 3,
+            size: 8192,
+            maxHlc: Hlc(98, 0, 1),
+            crc: 0xABCD,
+          ),
         ],
         segments: [
           SegmentRef(
@@ -622,10 +639,7 @@ void main() {
                 SetOrderOp(
                   hlc,
                   OrderScope(kind, uid(rnd.nextInt(10)), rnd.nextInt(2)),
-                  List.generate(
-                    rnd.nextInt(30),
-                    (_) => uid(rnd.nextInt(500)),
-                  ),
+                  List.generate(rnd.nextInt(30), (_) => uid(rnd.nextInt(500))),
                 ),
               );
             default:

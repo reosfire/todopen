@@ -83,8 +83,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   List<Task> get tasks => _tasksCache ??= DomainMapper.allTasks(_replica);
 
   List<TaskList> get lists =>
-      _listsCache ??= DomainMapper.allLists(_replica)
-        ..sort(_bySidebarOrder);
+      _listsCache ??= DomainMapper.allLists(_replica)..sort(_bySidebarOrder);
 
   List<Folder> get folders =>
       _foldersCache ??= DomainMapper.allFolders(_replica)
@@ -296,10 +295,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     };
     if (members.isEmpty) return const [];
 
-    final scope = DomainMapper.taskScope(
-      listId,
-      completed: completedSection,
-    );
+    final scope = DomainMapper.taskScope(listId, completed: completedSection);
     final ordered = _replica.orderedIds(scope, members.keys.toSet());
     return [
       for (final id in ordered)
@@ -325,8 +321,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
       // One move op rather than rewriting neighbours: this is the whole
       // reason the linked list is gone.
       MoveWithinOrderOp(_clock.issue(), scope, task.id, null),
-      if (current.isEmpty)
-        SetOrderOp(_clock.issue(), scope, [task.id]),
+      if (current.isEmpty) SetOrderOp(_clock.issue(), scope, [task.id]),
     ]);
   }
 
@@ -399,11 +394,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
       completed: first.isCompleted,
     );
     _record([
-      SetOrderOp(
-        _clock.issue(),
-        scope,
-        orderedTasks.map((t) => t.id).toList(),
-      ),
+      SetOrderOp(_clock.issue(), scope, orderedTasks.map((t) => t.id).toList()),
     ]);
   }
 
@@ -481,10 +472,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   List<Uuid128> _sidebarOrder() {
-    final members = {
-      ...lists.map((l) => l.id),
-      ...folders.map((f) => f.id),
-    };
+    final members = {...lists.map((l) => l.id), ...folders.map((f) => f.id)};
     return _replica.orderedIds(DomainMapper.sidebarScope, members);
   }
 

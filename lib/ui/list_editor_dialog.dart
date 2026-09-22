@@ -62,9 +62,15 @@ class _ListEditorDialogState extends State<ListEditorDialog> {
                 border: OutlineInputBorder(),
               ),
               items: [
-                const DropdownMenuItem<Uuid128?>(value: null, child: Text('None')),
+                const DropdownMenuItem<Uuid128?>(
+                  value: null,
+                  child: Text('None'),
+                ),
                 ...state.folders.map(
-                  (f) => DropdownMenuItem<Uuid128?>(value: f.id, child: Text(f.name)),
+                  (f) => DropdownMenuItem<Uuid128?>(
+                    value: f.id,
+                    child: Text(f.name),
+                  ),
                 ),
               ],
               onChanged: (v) => setState(() => _folderId = v),

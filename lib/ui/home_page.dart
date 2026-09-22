@@ -607,11 +607,6 @@ class _HomePageState extends State<HomePage> {
       scrolledUnderElevation: 0,
       backgroundColor: Theme.of(context).colorScheme.surface,
       actions: [
-        IconButton(
-          icon: const Icon(Icons.search),
-          onPressed: () => _openSearch(),
-          tooltip: _searchTooltip(),
-        ),
         if (state.syncing)
           const Padding(
             padding: EdgeInsets.all(12),
@@ -660,11 +655,6 @@ class _HomePageState extends State<HomePage> {
         children: [
           Text(title, style: Theme.of(context).textTheme.titleLarge),
           const Spacer(),
-          IconButton(
-            icon: const Icon(Icons.search),
-            onPressed: () => _openSearch(),
-            tooltip: _searchTooltip(),
-          ),
           if (state.syncing)
             const SizedBox(
               width: 20,
@@ -680,15 +670,6 @@ class _HomePageState extends State<HomePage> {
         ],
       ),
     );
-  }
-
-  /// Label for the search button. The shortcut is only mentioned where there
-  /// is a keyboard to press it on.
-  String _searchTooltip() {
-    const label = 'Search all tasks';
-    if (_isMobile) return label;
-    final mod = defaultTargetPlatform == TargetPlatform.macOS ? '⌘' : 'Ctrl+';
-    return '$label (${mod}F)';
   }
 
   /// The search input. Search always covers every task, so there is no scope

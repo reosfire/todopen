@@ -49,8 +49,11 @@ MarkdownStyleSheet notesMarkdownStyleSheet(BuildContext context) {
     h3: heading(text.titleMedium, 18, FontWeight.w600),
     h4: heading(text.titleSmall, 16, FontWeight.w600),
     h5: heading(text.titleSmall, 14, FontWeight.w600),
-    h6: heading(text.labelLarge, 13, FontWeight.w600)
-        .copyWith(color: scheme.onSurfaceVariant),
+    h6: heading(
+      text.labelLarge,
+      13,
+      FontWeight.w600,
+    ).copyWith(color: scheme.onSurfaceVariant),
     h1Padding: const EdgeInsets.only(top: 12, bottom: 4),
     h2Padding: const EdgeInsets.only(top: 20, bottom: 4),
     h3Padding: const EdgeInsets.only(top: 16, bottom: 2),
@@ -92,7 +95,10 @@ MarkdownStyleSheet notesMarkdownStyleSheet(BuildContext context) {
         right: Radius.circular(8),
       ),
       border: Border(
-        left: BorderSide(color: scheme.primary.withValues(alpha: 0.6), width: 3),
+        left: BorderSide(
+          color: scheme.primary.withValues(alpha: 0.6),
+          width: 3,
+        ),
       ),
     ),
     horizontalRuleDecoration: BoxDecoration(

@@ -31,9 +31,7 @@ void main() {
 
     return MaterialApp(
       home: Scaffold(
-        body: Center(
-          child: SizedBox(width: 200, height: 200, child: handle),
-        ),
+        body: Center(child: SizedBox(width: 200, height: 200, child: handle)),
       ),
     );
   }
