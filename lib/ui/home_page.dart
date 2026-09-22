@@ -38,7 +38,17 @@ class SearchAllIntent extends Intent {
   const SearchAllIntent();
 }
 
-/// Ctrl+F / Ctrl+Shift+F, with Cmd on macOS and iOS.
+/// Backs out of whatever the user is currently in (Escape).
+///
+/// One intent for every level rather than one per level: what Escape means
+/// depends on what is open, and only the page knows that. See
+/// `_HomePageState._escape` for the order the levels are peeled in.
+class EscapeIntent extends Intent {
+  const EscapeIntent();
+}
+
+/// The page's global chords: Ctrl+F / Ctrl+Shift+F (Cmd on macOS and iOS)
+/// and Escape.
 ///
 /// Also mounted as a `Shortcuts` map above the whole page, which is what makes
 /// the chords work while a descendant (the add-task field, the notes editor)
@@ -56,6 +66,7 @@ final Map<ShortcutActivator, Intent> searchShortcuts = {
       const SearchAllIntent(),
   const SingleActivator(LogicalKeyboardKey.keyF, meta: true, shift: true):
       const SearchAllIntent(),
+  const SingleActivator(LogicalKeyboardKey.escape): const EscapeIntent(),
 };
 
 /// Resolves [searchShortcuts] against a raw key event, or null if none match.
@@ -115,6 +126,15 @@ class _SearchShortcutListenerState extends State<SearchShortcutListener> {
     // If focus is already inside this subtree, the Shortcuts above has
     // handled it; acting again would fire the callback twice.
     if (_focusIsInside()) return false;
+
+    // A dialog or menu on top of the page owns Escape — it closes itself, and
+    // backing the page out underneath it would undo two levels at once. The
+    // focus check above does not catch this: a route pushed over the page
+    // takes focus *outside* this subtree, which is exactly the case this
+    // listener exists to handle.
+    if (intent is EscapeIntent && ModalRoute.of(context)?.isCurrent != true) {
+      return false;
+    }
 
     final action = Actions.maybeFind<Intent>(context, intent: intent);
     if (action == null || !action.isEnabled(intent)) return false;
@@ -297,6 +317,76 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  /// Backs out of exactly one level of whatever is open.
+  ///
+  /// Escape peels the innermost thing first, so a user who is deep in the page
+  /// can hold it down and walk back out rather than losing everything at once.
+  /// Innermost to outermost:
+  ///
+  /// 1. focus inside a field (the add-task box, the notes editor) — drop it,
+  ///    which leaves what is on screen alone but stops keys going into text;
+  /// 2. the notes panel, if a task is selected;
+  /// 3. search.
+  ///
+  /// Dialogs are not in this list: a route pops itself on Escape, and the
+  /// global listener stands down while one is up.
+  ///
+  /// The list's own filter is *not* peeled here — it belongs to the add-task
+  /// field, which clears it itself while it still has focus, before this ever
+  /// sees the key.
+  void _escape() {
+    // The search field is the exception to step 1: an unfocused search bar is
+    // a dead end — the list underneath is still the search results — so
+    // Escape there closes search outright instead of just dropping focus.
+    if (_searchActive && _searchFocus.hasFocus) {
+      _closeSearch();
+      return;
+    }
+
+    // Step 1: a focused field. Handled by unfocusing rather than by clearing
+    // anything, so an in-progress edit survives — the notes editor flushes its
+    // save on focus loss, and the add-task field keeps its text.
+    final focused = FocusManager.instance.primaryFocus;
+    if (focused != null && _isTextInput(focused)) {
+      focused.unfocus();
+      return;
+    }
+
+    // Step 2: the notes panel, but only on the wide layout, where it is a
+    // column of the page. On a narrow one it is a modal sheet that pops itself
+    // on Escape and leaves `_selectedTask` set behind it, so acting on that
+    // here would eat a key with nothing on screen to close.
+    if (!_isNarrow && _selectedTask != null) {
+      setState(() => _selectedTask = null);
+      return;
+    }
+
+    // Step 3: search, back to the list that was open under it.
+    if (_searchActive) _closeSearch();
+  }
+
+  /// Whether [node] is the focus node of a text field.
+  ///
+  /// A `TextField`'s node lives *inside* its `EditableText`, and its own
+  /// context is a plain `Focus`, so the two are told apart by looking up for
+  /// the `EditableText` rather than at the node's own widget.
+  static bool _isTextInput(FocusNode node) {
+    final context = node.context;
+    if (context is! Element) return false;
+    // The EditableText sits a handful of elements above its node, so the walk
+    // is capped rather than run to the root for every non-field node.
+    var isField = false;
+    var remaining = 12;
+    context.visitAncestorElements((element) {
+      if (element.widget is EditableText) {
+        isField = true;
+        return false;
+      }
+      return --remaining > 0;
+    });
+    return isField;
+  }
+
   /// Clears search state. Call inside an existing setState.
   void _exitSearch() {
     if (!_searchActive) return;
@@ -379,6 +469,12 @@ class _HomePageState extends State<HomePage> {
           SearchAllIntent: CallbackAction<SearchAllIntent>(
             onInvoke: (_) {
               _searchShortcut();
+              return null;
+            },
+          ),
+          EscapeIntent: CallbackAction<EscapeIntent>(
+            onInvoke: (_) {
+              _escape();
               return null;
             },
           ),

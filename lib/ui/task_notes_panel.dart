@@ -345,6 +345,17 @@ class _TaskNotesPanelState extends State<TaskNotesPanel> {
 
   KeyEventResult _handleEditorKey(FocusNode node, KeyEvent event) {
     if (event is! KeyDownEvent) return KeyEventResult.ignored;
+
+    // Escape leaves the editor rather than closing the panel: the note is
+    // still on screen, and dropping focus here is what commits the pending
+    // save. A second Escape, now that nothing in the panel has focus, reaches
+    // the page and closes it. Handled above the selection guard below, since
+    // leaving the field does not depend on where the caret is.
+    if (event.logicalKey == LogicalKeyboardKey.escape) {
+      _notesFocus.unfocus();
+      return KeyEventResult.handled;
+    }
+
     final text = _notesCtrl.text;
     final sel = _notesCtrl.selection;
     if (!sel.isValid) return KeyEventResult.ignored;

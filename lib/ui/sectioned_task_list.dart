@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../models/task.dart';
@@ -167,6 +168,23 @@ class _SectionedTaskListState extends State<SectionedTaskList> {
     _inputFocus.requestFocus();
   }
 
+  /// Escape backs out of the add-task field one step at a time.
+  ///
+  /// With something typed, it clears the box — which also drops the filter and
+  /// restores the full list — but keeps focus, so the user can immediately
+  /// type something else. Only once the box is empty does it give focus up,
+  /// which lets the page's own Escape handling take the next level. An empty
+  /// box is left alone entirely, so the key keeps bubbling.
+  KeyEventResult _handleInputKey(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent) return KeyEventResult.ignored;
+    if (event.logicalKey != LogicalKeyboardKey.escape) {
+      return KeyEventResult.ignored;
+    }
+    if (_inputController.text.isEmpty) return KeyEventResult.ignored;
+    _clearFilter();
+    return KeyEventResult.handled;
+  }
+
   @override
   Widget build(BuildContext context) {
     final sections = _visibleSections;
@@ -265,38 +283,41 @@ class _SectionedTaskListState extends State<SectionedTaskList> {
       child: Row(
         children: [
           Expanded(
-            child: TextField(
-              controller: _inputController,
-              focusNode: _inputFocus,
-              decoration: InputDecoration(
-                hintText: widget.inputHint,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
+            child: Focus(
+              onKeyEvent: _handleInputKey,
+              child: TextField(
+                controller: _inputController,
+                focusNode: _inputFocus,
+                decoration: InputDecoration(
+                  hintText: widget.inputHint,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
+                  prefixIcon: widget.filterWhileTyping && _filtering
+                      ? const Icon(Icons.search, size: 18)
+                      : null,
+                  suffixIcon: widget.filterWhileTyping && _filtering
+                      ? IconButton(
+                          icon: const Icon(Icons.clear, size: 18),
+                          onPressed: _clearFilter,
+                          tooltip: 'Clear',
+                        )
+                      : null,
                 ),
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 12,
-                ),
-                prefixIcon: widget.filterWhileTyping && _filtering
-                    ? const Icon(Icons.search, size: 18)
-                    : null,
-                suffixIcon: widget.filterWhileTyping && _filtering
-                    ? IconButton(
-                        icon: const Icon(Icons.clear, size: 18),
-                        onPressed: _clearFilter,
-                        tooltip: 'Clear',
-                      )
-                    : null,
+                onChanged: _onInputChanged,
+                onSubmitted: (_) => _handleAddTask(),
+                // Not unfocus-on-tap-outside while filtering: tapping a matching
+                // task is how the user acts on what the filter found, and
+                // dropping focus there would clear the field under them.
+                onTapOutside: (_) {
+                  if (!_filtering) _inputFocus.unfocus();
+                },
+                textInputAction: TextInputAction.done,
               ),
-              onChanged: _onInputChanged,
-              onSubmitted: (_) => _handleAddTask(),
-              // Not unfocus-on-tap-outside while filtering: tapping a matching
-              // task is how the user acts on what the filter found, and
-              // dropping focus there would clear the field under them.
-              onTapOutside: (_) {
-                if (!_filtering) _inputFocus.unfocus();
-              },
-              textInputAction: TextInputAction.done,
             ),
           ),
           const SizedBox(width: 8),
