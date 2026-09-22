@@ -487,7 +487,7 @@ class _TaskNotesPanelState extends State<TaskNotesPanel> {
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 10, 12, 10),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerLow,
+        color: theme.colorScheme.surface,
         border: Border(bottom: BorderSide(color: theme.dividerColor)),
       ),
       // A single row: the title lives in the task list, not here, so the
@@ -881,7 +881,6 @@ class _ModeSwitcher extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final modes = <(_PanelMode, IconData, String)>[
       (_PanelMode.edit, Icons.edit_outlined, 'Edit'),
       (_PanelMode.preview, Icons.visibility_outlined, 'Preview'),
@@ -889,24 +888,17 @@ class _ModeSwitcher extends StatelessWidget {
         (_PanelMode.split, Icons.vertical_split_outlined, 'Split'),
     ];
 
-    return Container(
-      padding: const EdgeInsets.all(2),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.7),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          for (final (value, icon, label) in modes)
-            _ModeChip(
-              icon: icon,
-              label: label,
-              active: mode == value,
-              onTap: () => onChanged(value),
-            ),
-        ],
-      ),
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (final (value, icon, label) in modes)
+          _ModeChip(
+            icon: icon,
+            label: label,
+            active: mode == value,
+            onTap: () => onChanged(value),
+          ),
+      ],
     );
   }
 }
@@ -928,7 +920,7 @@ class _ModeChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final fg = active
-        ? theme.colorScheme.onPrimaryContainer
+        ? theme.colorScheme.onSecondaryContainer
         : theme.colorScheme.onSurfaceVariant;
 
     return Semantics(
@@ -943,7 +935,7 @@ class _ModeChip extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
           decoration: BoxDecoration(
             color: active
-                ? theme.colorScheme.primaryContainer
+                ? theme.colorScheme.secondaryContainer
                 : Colors.transparent,
             borderRadius: BorderRadius.circular(6),
           ),
