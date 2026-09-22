@@ -545,6 +545,7 @@ class _TaskTileState extends State<TaskTile> {
     final state = context.read<AppState>();
     final task = widget.task;
     final isRecurring = task.recurrence != null;
+    final hasNotes = task.notes.trim().isNotEmpty;
     final completed = isRecurring && widget.toggleDate != null
         ? task.isCompletedOn(widget.toggleDate!)
         : task.isCompleted;
@@ -638,6 +639,18 @@ class _TaskTileState extends State<TaskTile> {
                         color: Theme.of(
                           context,
                         ).colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                      ),
+                    ),
+                  if (hasNotes)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: Icon(
+                        Icons.notes,
+                        size: 16,
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                        semanticLabel: 'Has notes',
                       ),
                     ),
                   IconButton(
