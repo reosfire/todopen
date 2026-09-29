@@ -320,8 +320,11 @@ class SyncEngine {
 
       _manifest = next;
       _appliedSegments.add(ref.path);
-      final pushed = _pending.length;
-      _pending.clear();
+      // Only what went into the segment is acknowledged. Edits recorded
+      // while the upload was in flight were appended after it and are still
+      // unsent; clearing the whole queue here dropped them for good.
+      final pushed = segment.ops.length;
+      _pending.removeRange(0, pushed);
 
       var compacted = false;
       if (allowCompaction && _shouldCompact(next)) {

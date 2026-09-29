@@ -187,6 +187,38 @@ void main() {
       );
     });
 
+    test('an edit made while a push is in flight is not dropped', () async {
+      // The app does not block editing during a sync. An edit that lands
+      // after the segment is built but before the push is acknowledged is
+      // not in that segment, so it must stay queued for the next push.
+      final store = FakeStore();
+      final a = engineFor(store, 1);
+      final b = engineFor(store, 2);
+      addTask(a, uid(1), 'seed');
+      await a.sync();
+      await b.sync();
+
+      addTask(a, uid(2), 'in the segment');
+      store.beforeCas = (path) async {
+        if (path != SyncEngine.manifestPath) return;
+        store.beforeCas = null;
+        addTask(a, uid(3), 'typed during the upload');
+      };
+      final report = await a.sync();
+
+      expect(report.opsPushed, greaterThan(0));
+      expect(a.pendingOpCount, greaterThan(0), reason: 'still unsent');
+
+      await a.sync();
+      expect(a.pendingOpCount, 0);
+      await b.sync();
+      expect(
+        b.replica.get(EntityKind.task, uid(3))?.stringField(TaskField.title),
+        'typed during the upload',
+      );
+      expect(snapshot(a.replica), snapshot(b.replica));
+    });
+
     test('orphaned segment from a lost CAS is cleaned up', () async {
       final store = FakeStore();
       final a = engineFor(store, 1);
