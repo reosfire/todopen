@@ -531,7 +531,7 @@ class _HomePageState extends State<HomePage> {
           _clampSidePanelWidth(constraints.maxWidth);
           return Row(
             children: [
-              SizedBox(width: _sidePanelWidth, child: _buildSidePanel(state)),
+              SizedBox(width: _sidePanelWidth, child: _cachedSidePanel(state)),
               PanelResizeHandle(
                 onDrag: (d) => _resizeSidePanel(d, constraints.maxWidth),
                 onDragEnd: _savePanelGeometry,
@@ -759,6 +759,49 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  /// The wide side panel as last built, and the inputs it was built from.
+  ///
+  /// Rebuilding the panel was a large share of every frame, yet most rebuilds
+  /// of this page (editing or selecting a task, typing a search, dragging the
+  /// notes divider) change nothing it shows. Handing back the identical
+  /// widget lets Flutter skip the whole subtree; theme and media changes
+  /// still reach it through its own inherited dependencies.
+  Widget? _sidePanel;
+  List<Object?> _sidePanelBuiltFrom = const [];
+
+  Widget _cachedSidePanel(AppState state) {
+    final inputs = _sidePanelInputs(state);
+    final cached = _sidePanel;
+    if (cached != null && listEquals(inputs, _sidePanelBuiltFrom)) {
+      return cached;
+    }
+    _sidePanelBuiltFrom = inputs;
+    return _sidePanel = _buildSidePanel(state);
+  }
+
+  /// Everything the side panel shows. Anything [_buildSidePanel] comes to
+  /// read from this state or from [AppState] must be added here, or the panel
+  /// will keep showing what it read last time.
+  List<Object?> _sidePanelInputs(AppState state) => [
+    _searchActive,
+    _selectedListId,
+    _selectedSmartListId,
+    _smartListsHeight,
+    _listsHeight,
+    state.isSignedIn,
+    // Models keep their identity while unchanged, so comparing each one
+    // catches a rename, recolor, move or reorder. The labels keep one
+    // section's items from lining up with another's.
+    'lists', ...state.lists,
+    'folders', ...state.folders,
+    'smart lists', ...state.smartLists,
+    'expanded', ..._expandedFolderIds,
+    'counts',
+    for (final l in state.lists) state.pendingCountForList(l.id),
+    for (final sl in builtInSmartLists) state.smartListCount(sl),
+    for (final sl in state.smartLists) state.smartListCount(sl),
+  ];
+
   /// The wide-layout side panel: the same items, split into sections the user
   /// can resize against each other, with smart lists and lists each scrolling
   /// independently.
@@ -923,7 +966,7 @@ class _HomePageState extends State<HomePage> {
     return [
       // Built-in smart lists (always shown, not editable)
       ...builtInSmartLists.map((sl) {
-        final count = sl.filter.countTasks(state.tasks);
+        final count = state.smartListCount(sl);
         return ListTile(
           contentPadding: const EdgeInsets.only(
             left: 16,
@@ -939,7 +982,7 @@ class _HomePageState extends State<HomePage> {
       }),
       // User-created smart lists
       ...state.smartLists.map((sl) {
-        final count = sl.filter.countTasks(state.tasks);
+        final count = state.smartListCount(sl);
         return _HoverTrailingTile(
           child: (isHovered) => ListTile(
             contentPadding: const EdgeInsets.only(
@@ -1055,11 +1098,10 @@ class _HomePageState extends State<HomePage> {
       final folderLists =
           state.lists.where((l) => l.folderId == folder.id).toList()
             ..sort((a, b) => a.order.compareTo(b.order));
-      final folderListCount = state.tasks
-          .where(
-            (t) => folderLists.any((l) => l.id == t.listId) && !t.isCompleted,
-          )
-          .length;
+      final folderListCount = folderLists.fold<int>(
+        0,
+        (sum, l) => sum + state.pendingCountForList(l.id),
+      );
       return _HoverTrailingTile(
         key: ValueKey('folder_${folder.id}'),
         child: (isHovered) => _SwipeToEdit(
@@ -1212,9 +1254,7 @@ class _HomePageState extends State<HomePage> {
     bool enableSwipe = true,
     double leadingIndent = 0,
   }) {
-    final count = state.tasks
-        .where((t) => t.listId == list.id && !t.isCompleted)
-        .length;
+    final count = state.pendingCountForList(list.id);
     return _HoverTrailingTile(
       key: key,
       child: (isHovered) {

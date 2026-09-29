@@ -60,29 +60,118 @@ class LocalStore {
   }
 
   // ───── Pending (unsynced) ops ─────
+  //
+  // The pending log is written on every local edit, and while signed out it
+  // is never cleared, so it grows with every edit ever made. Rewriting it
+  // whole each time made a checkbox tick cost O(history). Instead it is kept
+  // as a base row plus appended tail rows (`pending_ops.1`, `.2`, ...), each
+  // holding only the ops that were new at that save; the tails are folded
+  // back into the base once there are enough of them to slow a load.
+
+  static const _pendingTailPrefix = '$_keyPending.';
+  static const _maxPendingTails = 32;
+
+  /// The ops already on disk, in order. A save whose list extends this one
+  /// only has to write the difference.
+  List<Op> _persistedPending = const [];
+
+  /// Highest tail row index in use.
+  int _pendingTails = 0;
+
+  /// Pending writes run one at a time: a fold deletes the tails, and must
+  /// not race an append that is writing the next one.
+  Future<void> _pendingWrites = Future.value();
 
   /// Persist the ops that have not reached the server yet.
   ///
-  /// Written on every local edit, so this is the hot path; a pending buffer
-  /// is small (it is cleared on each successful push) and encodes as one
-  /// segment.
-  Future<void> savePending(List<Op> ops, int deviceId) async {
+  /// [ops] is the engine's whole pending queue. When it only grew since the
+  /// last save, just the new ops are written; when it shrank or changed (a
+  /// push went through) the log is rewritten.
+  Future<void> savePending(List<Op> ops, int deviceId) {
+    final saved = _persistedPending;
+    final grew = ops.length >= saved.length && _startsWith(ops, saved);
+    if (grew && ops.length == saved.length) return _pendingWrites;
+
+    // Bookkeeping is updated synchronously, so a save issued while this one
+    // is still writing plans against what will be on disk, not what was.
+    _persistedPending = List<Op>.unmodifiable(ops);
+    final Future<void> Function() write;
     if (ops.isEmpty) {
-      await _deleteBlob(_keyPending);
-      return;
+      _pendingTails = 0;
+      write = _deletePendingLog;
+    } else if (grew && saved.isNotEmpty && _pendingTails < _maxPendingTails) {
+      final index = ++_pendingTails;
+      final tail = ops.sublist(saved.length);
+      write = () => _putBlob(
+        '$_pendingTailPrefix$index',
+        Segment.fromOps(tail, deviceId).encode(),
+      );
+    } else {
+      _pendingTails = 0;
+      final bytes = Segment.fromOps(ops, deviceId).encode();
+      write = () => _db.transaction(() async {
+        await _deletePendingLog();
+        await _putBlob(_keyPending, bytes);
+      });
     }
-    await _putBlob(_keyPending, Segment.fromOps(ops, deviceId).encode());
+    return _pendingWrites = _pendingWrites.then((_) => write()).catchError((
+      Object e,
+    ) {
+      // Next save rewrites the whole log rather than appending to one
+      // whose state on disk is now unknown.
+      _persistedPending = const [];
+      debugPrint('Pending ops write failed: $e');
+    });
+  }
+
+  static bool _startsWith(List<Op> ops, List<Op> prefix) {
+    if (prefix.length > ops.length) return false;
+    for (var i = 0; i < prefix.length; i++) {
+      if (!identical(ops[i], prefix[i])) return false;
+    }
+    return true;
+  }
+
+  Future<void> _deletePendingLog() async {
+    await (_db.delete(_db.uiStateEntries)..where(
+          (t) => t.key.equals(_keyPending) | t.key.like('$_pendingTailPrefix%'),
+        ))
+        .go();
   }
 
   Future<List<Op>> loadPending() async {
-    final bytes = await _getBlob(_keyPending);
-    if (bytes == null) return [];
-    try {
-      return Segment.decode(bytes).ops;
-    } catch (e) {
-      debugPrint('Pending ops corrupt, dropping: $e');
-      return [];
+    final ops = <Op>[];
+    var clean = true;
+    List<Op> decode(String? s) {
+      if (s == null) return const [];
+      try {
+        return Segment.decode(base64Decode(s)).ops;
+      } catch (e) {
+        debugPrint('Pending ops corrupt, dropping: $e');
+        clean = false;
+        return const [];
+      }
     }
+
+    ops.addAll(decode(await _getString(_keyPending)));
+    final tails = await (_db.select(
+      _db.uiStateEntries,
+    )..where((t) => t.key.like('$_pendingTailPrefix%'))).get();
+    final indexed = [
+      for (final row in tails)
+        if (int.tryParse(row.key.substring(_pendingTailPrefix.length))
+            case final i?)
+          (i, row.value),
+    ]..sort((a, b) => a.$1.compareTo(b.$1));
+    for (final (_, value) in indexed) {
+      ops.addAll(decode(value));
+    }
+
+    // Anything unreadable forces the next save to rewrite the log whole, so
+    // a corrupt row does not linger underneath new appends.
+    _persistedPending = clean ? List<Op>.unmodifiable(ops) : const [];
+    _pendingTails = indexed.isEmpty ? 0 : indexed.last.$1;
+    return ops;
   }
 
   // ───── Sync bookkeeping ─────
@@ -152,7 +241,9 @@ class LocalStore {
   /// "reset local cache" action.
   Future<void> clear() async {
     await _deleteBlob(_keyReplica);
-    await _deleteBlob(_keyPending);
+    await _deletePendingLog();
+    _persistedPending = const [];
+    _pendingTails = 0;
     await _db.delete(_db.uiStateEntries).go();
   }
 

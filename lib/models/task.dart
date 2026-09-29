@@ -35,27 +35,22 @@ class Task {
   }) : tagIds = tagIds ?? {},
        completedDates = completedDates ?? {};
 
+  // Both checks compare calendar fields rather than building midnight
+  // DateTimes to compare: smart lists run them over every task on each
+  // change, and constructing a DateTime is the expensive part.
+
   bool isCompletedOn(DateTime date) {
     if (recurrence == null) return isCompleted;
-    final d = DateTime(date.year, date.month, date.day);
-    return completedDates.any(
-      (c) => c.year == d.year && c.month == d.month && c.day == d.day,
-    );
+    return completedDates.any((c) => _sameDay(c, date));
   }
 
   bool occursOn(DateTime date) {
-    if (recurrence != null && scheduledDate != null) {
-      return recurrence!.occursOn(date, scheduledDate!);
-    }
-    if (scheduledDate != null) {
-      final d = DateTime(date.year, date.month, date.day);
-      final s = DateTime(
-        scheduledDate!.year,
-        scheduledDate!.month,
-        scheduledDate!.day,
-      );
-      return d == s;
-    }
-    return false;
+    final scheduled = scheduledDate;
+    if (scheduled == null) return false;
+    if (recurrence != null) return recurrence!.occursOn(date, scheduled);
+    return _sameDay(scheduled, date);
   }
+
+  static bool _sameDay(DateTime a, DateTime b) =>
+      a.day == b.day && a.month == b.month && a.year == b.year;
 }

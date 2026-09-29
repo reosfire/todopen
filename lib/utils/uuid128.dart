@@ -50,19 +50,25 @@ class Uuid128 {
     return Uuid128.fromBytes(Uint8List.fromList(uuid));
   }
 
-  Uint8List toBytes() {
+  /// Big-endian bytes, computed once. [Int64] shifts allocate on the web,
+  /// and ids are encoded on every local save, so this is on a hot path.
+  late final Uint8List _bytes = _computeBytes();
+
+  Uint8List _computeBytes() {
     final bytes = Uint8List(16);
-
+    // Int64.toBytes is little-endian and works on the limbs directly, which
+    // is far cheaper than eight shift-and-mask Int64 ops per half.
+    final h = high.toBytes();
+    final l = low.toBytes();
     for (int i = 0; i < 8; i++) {
-      bytes[i] = ((high >> (56 - 8 * i)) & 0xFF).toInt();
+      bytes[i] = h[7 - i];
+      bytes[i + 8] = l[7 - i];
     }
-
-    for (int i = 0; i < 8; i++) {
-      bytes[i + 8] = ((low >> (56 - 8 * i)) & 0xFF).toInt();
-    }
-
     return bytes;
   }
+
+  /// A fresh copy, so a caller writing into it cannot corrupt the cache.
+  Uint8List toBytes() => Uint8List.fromList(_bytes);
 
   @override
   bool operator ==(Object other) {
@@ -71,15 +77,17 @@ class Uuid128 {
     return high == other.high && low == other.low;
   }
 
+  // Ids key most maps in the app; Int64.hashCode is not free on the web.
   @override
-  int get hashCode => high.hashCode ^ low.hashCode;
+  late final int hashCode = high.hashCode ^ low.hashCode;
 
   String toCompactString() {
-    return base64Url.encode(toBytes()).substring(0, 22);
+    return base64Url.encode(_bytes).substring(0, 22);
   }
 
+  /// Cached: widgets compare ids by string while building every row.
+  late final String _string = Uuid.unparse(_bytes);
+
   @override
-  String toString() {
-    return Uuid.unparse(toBytes());
-  }
+  String toString() => _string;
 }

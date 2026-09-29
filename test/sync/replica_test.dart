@@ -234,6 +234,49 @@ void main() {
     });
   });
 
+  group('entity version', () {
+    // The UI reuses a task's projection while its version is unchanged, so
+    // every observable change must bump it and a no-op merge must not.
+    SetFieldOp title(int t, String v) => SetFieldOp(
+      Hlc(t, 0, 1),
+      EntityKind.task,
+      uid(1),
+      TaskField.title,
+      StringValue(v),
+    );
+
+    test('bumps on every change that alters the entity', () {
+      final r = Replica();
+      r.apply(CreateEntityOp(const Hlc(20, 0, 1), EntityKind.task, uid(1)));
+      final e = r.get(EntityKind.task, uid(1))!;
+
+      final changes = <Op>[
+        title(30, 'a'),
+        DeleteEntityOp(const Hlc(40, 0, 1), EntityKind.task, uid(1)),
+        CreateEntityOp(const Hlc(50, 0, 1), EntityKind.task, uid(1)),
+        // An older op arriving late lowers createdAt, which the task's
+        // createdAt falls back to.
+        title(10, 'old'),
+      ];
+      for (final op in changes) {
+        final before = e.version;
+        r.apply(op);
+        expect(e.version, greaterThan(before), reason: '$op');
+      }
+    });
+
+    test('does not bump on a write that loses or repeats', () {
+      final r = Replica();
+      r.apply(CreateEntityOp(const Hlc(10, 0, 1), EntityKind.task, uid(1)));
+      r.apply(title(30, 'a'));
+      final e = r.get(EntityKind.task, uid(1))!;
+      final v = e.version;
+      r.apply(title(30, 'a'));
+      r.apply(title(20, 'older'));
+      expect(e.version, v);
+    });
+  });
+
   group('ordering', () {
     final scope = OrderScope(EntityKind.task, uid(99), 0);
 
@@ -326,6 +369,104 @@ void main() {
         uid(2),
         uid(3),
       });
+    });
+
+    test('resolving between ops matches a cold replay of the same ops', () {
+      // Resolving after every op keeps the cache warm, so moves that land
+      // last take the incremental path; a replica that only resolves at the
+      // end replays everything. The two must never disagree, whatever mix
+      // of newer, older, repeated and baseline ops arrives.
+      final rnd = Random(7);
+      for (var round = 0; round < 200; round++) {
+        final warm = Replica();
+        final ops = <Op>[];
+        for (var i = 0; i < 40; i++) {
+          final hlc = Hlc(10 + rnd.nextInt(60), rnd.nextInt(3), rnd.nextInt(3));
+          final Op op = switch (rnd.nextInt(10)) {
+            0 => SetOrderOp(hlc, scope, [
+              for (var k = 0; k < 6; k++)
+                if (rnd.nextBool()) uid(k),
+            ]),
+            _ => MoveWithinOrderOp(
+              hlc,
+              scope,
+              uid(rnd.nextInt(8)),
+              rnd.nextInt(4) == 0 ? null : uid(rnd.nextInt(9)),
+            ),
+          };
+          ops.add(op);
+          warm.apply(op);
+          final cold = Replica()..applyAll(ops);
+          expect(
+            warm.resolvedOrder(scope),
+            cold.resolvedOrder(scope),
+            reason: 'round $round, after op $i',
+          );
+        }
+      }
+    });
+
+    test('resolve matches the reference array replay exactly', () {
+      // The reference is the original algorithm: newest baseline, then the
+      // newest move per item in HLC order, each removing the item's first
+      // occurrence and reinserting it after its anchor's first occurrence
+      // (or at the end when the anchor is gone). Duplicate ids in a baseline
+      // are included on purpose; they must follow the same semantics.
+      List<Uuid128> reference(List<Op> ops) {
+        SetOrderOp? base;
+        for (final op in ops.whereType<SetOrderOp>()) {
+          if (base == null || op.hlc >= base.hlc) base = op;
+        }
+        final baseHlc = base?.hlc ?? Hlc.zero;
+        final latest = <Uuid128, MoveWithinOrderOp>{};
+        for (final op in ops.whereType<MoveWithinOrderOp>()) {
+          if (op.hlc <= baseHlc) continue;
+          final seen = latest[op.id];
+          if (seen == null || op.hlc > seen.hlc) latest[op.id] = op;
+        }
+        final out = List<Uuid128>.from(base?.ids ?? const <Uuid128>[]);
+        for (final m
+            in latest.values.toList()..sort((a, b) => a.hlc.compareTo(b.hlc))) {
+          out.remove(m.id);
+          final after = m.afterId;
+          final idx = after == null ? -1 : out.indexOf(after);
+          out.insert(
+            after == null ? 0 : (idx < 0 ? out.length : idx + 1),
+            m.id,
+          );
+        }
+        return out;
+      }
+
+      final rnd = Random(11);
+      for (var round = 0; round < 400; round++) {
+        final ops = <Op>[];
+        final withDuplicates = round.isOdd;
+        // Distinct stamps, so which baseline wins is never a tie.
+        final stamps = List.generate(30, (i) => i)..shuffle(rnd);
+        for (final t in stamps) {
+          final hlc = Hlc(10 + t, 0, 1);
+          if (rnd.nextInt(8) == 0) {
+            ops.add(
+              SetOrderOp(hlc, scope, [
+                for (var k = 0; k < 6 + rnd.nextInt(4); k++)
+                  uid(withDuplicates ? rnd.nextInt(5) : k),
+              ]),
+            );
+          } else {
+            final id = uid(rnd.nextInt(8));
+            ops.add(
+              MoveWithinOrderOp(hlc, scope, id, switch (rnd.nextInt(6)) {
+                0 => null,
+                1 => id, // anchored on itself
+                _ => uid(rnd.nextInt(10)), // sometimes absent
+              }),
+            );
+          }
+        }
+        final r = Replica()..applyAll(ops);
+        expect(r.resolvedOrder(scope), reference(ops), reason: 'round $round');
+      }
     });
 
     test('lanes are independent (pending vs completed)', () {

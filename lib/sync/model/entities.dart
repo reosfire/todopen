@@ -34,20 +34,33 @@ class ReplicatedEntity {
   /// Both are tracked because liveness is decided by comparing the newest
   /// create against the newest delete. Clearing the tombstone on the spot
   /// instead would make the result depend on which op arrived first.
-  Hlc createdAt;
+  Hlc get createdAt => _createdAt;
+  set createdAt(Hlc hlc) {
+    if (hlc == _createdAt) return;
+    _createdAt = hlc;
+    _version++;
+  }
+
+  Hlc _createdAt;
   Hlc _lastCreate;
 
   /// Latest delete stamp, or null if never deleted.
   Hlc? _deletedAt;
 
+  /// Bumped whenever a merge actually changes this entity, so a projection
+  /// of it can be reused for as long as the number stays the same.
+  int get version => _version;
+  int _version = 0;
+
   ReplicatedEntity({
     required this.kind,
     required this.id,
     Map<int, Stamped<OpValue>>? fields,
-    required this.createdAt,
+    required Hlc createdAt,
     Hlc? deletedAt,
     Hlc? lastCreate,
   }) : fields = fields ?? {},
+       _createdAt = createdAt,
        _deletedAt = deletedAt,
        _lastCreate = lastCreate ?? createdAt;
 
@@ -73,20 +86,27 @@ class ReplicatedEntity {
     final existing = fields[field];
     if (existing == null || hlc > existing.hlc) {
       fields[field] = Stamped(value, hlc);
+      _version++;
     }
   }
 
   /// Record a delete. Keeps the newest one seen.
   void delete(Hlc hlc) {
     final d = _deletedAt;
-    if (d == null || hlc > d) _deletedAt = hlc;
+    if (d == null || hlc > d) {
+      _deletedAt = hlc;
+      _version++;
+    }
   }
 
   /// Record a create. Keeps the earliest for [createdAt] and the newest for
   /// deciding whether it outranks a tombstone.
   void create(Hlc hlc) {
     if (hlc < createdAt) createdAt = hlc;
-    if (hlc > _lastCreate) _lastCreate = hlc;
+    if (hlc > _lastCreate) {
+      _lastCreate = hlc;
+      _version++;
+    }
   }
 
   // ───── Typed accessors ─────

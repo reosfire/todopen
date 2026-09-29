@@ -84,4 +84,31 @@ void main() {
       expect(filter.countTasks([done, pending]), 1);
     });
   });
+
+  group('Task day matching', () {
+    // Scheduled and completion dates can carry a time of day; matching is by
+    // calendar day only, whatever time either side holds.
+    test('a dated task occurs on its calendar day at any time', () {
+      final t = _task(scheduledDate: DateTime(2026, 3, 9, 18, 30));
+      expect(t.occursOn(DateTime(2026, 3, 9)), isTrue);
+      expect(t.occursOn(DateTime(2026, 3, 9, 23, 59)), isTrue);
+      expect(t.occursOn(DateTime(2026, 3, 10)), isFalse);
+      expect(t.occursOn(DateTime(2025, 3, 9)), isFalse);
+      expect(t.occursOn(DateTime(2026, 4, 9)), isFalse);
+    });
+
+    test('an undated task occurs on no day', () {
+      expect(_task().occursOn(DateTime(2026, 3, 9)), isFalse);
+    });
+
+    test('a recurring completion counts for its calendar day only', () {
+      final t = _task(
+        scheduledDate: DateTime(2026, 1, 1),
+        recurrence: const DailyRecurrence(),
+        completedDates: {DateTime(2026, 3, 9, 7)},
+      );
+      expect(t.isCompletedOn(DateTime(2026, 3, 9, 22)), isTrue);
+      expect(t.isCompletedOn(DateTime(2026, 3, 10)), isFalse);
+    });
+  });
 }

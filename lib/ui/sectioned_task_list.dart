@@ -7,6 +7,7 @@ import '../models/task.dart';
 import '../models/smart_list.dart';
 import '../models/task_search.dart';
 import '../state/app_state.dart';
+import '../utils/uuid128.dart';
 import 'highlighted_text.dart';
 import 'task_editor_dialog.dart';
 
@@ -341,10 +342,38 @@ class _SectionedTaskListState extends State<SectionedTaskList> {
         HighlightedText(text: task.title, terms: _terms, style: style);
   }
 
+  /// Rows are keyed by section as well as task, so a task that moves between
+  /// sections (ticked into Completed) gets a fresh row rather than one reused
+  /// from the other section.
+  static Key _rowKey(int sectionIndex, Task task) =>
+      ValueKey<(int, Uuid128)>((sectionIndex, task.id));
+
+  /// Maps a row key back to its index in [tasks].
+  ///
+  /// The sliver asks this once per live row on every rebuild; scanning the
+  /// section each time made a rebuild quadratic in the section's length.
+  static int? Function(Key) _indexFinder(int sectionIndex, List<Task> tasks) {
+    Map<Uuid128, int>? index;
+    return (key) {
+      if (key is! ValueKey<(int, Uuid128)>) return null;
+      final (section, id) = key.value;
+      if (section != sectionIndex) return null;
+      index ??= () {
+        final m = <Uuid128, int>{};
+        for (var i = 0; i < tasks.length; i++) {
+          m.putIfAbsent(tasks[i].id, () => i);
+        }
+        return m;
+      }();
+      return index![id];
+    };
+  }
+
   List<Widget> _buildSectionSlivers(int sectionIndex, TaskSection section) {
     if (section.tasks.isEmpty) return [];
 
     final slivers = <Widget>[];
+    final findIndex = _indexFinder(sectionIndex, section.tasks);
 
     if (section.header != null) {
       slivers.add(
@@ -366,19 +395,13 @@ class _SectionedTaskListState extends State<SectionedTaskList> {
       slivers.add(
         SliverReorderableList(
           itemCount: section.tasks.length,
-          findChildIndexCallback: (key) {
-            if (key is! ValueKey<String>) return null;
-            final idx = section.tasks.indexWhere(
-              (t) => '${sectionIndex}_${t.id}' == key.value,
-            );
-            return idx == -1 ? null : idx;
-          },
+          findChildIndexCallback: findIndex,
           onReorder: (oldIndex, newIndex) =>
               widget.onReorder!.call(sectionIndex, oldIndex, newIndex),
           itemBuilder: (context, index) {
             final task = section.tasks[index];
             return TaskTile(
-              key: ValueKey('${sectionIndex}_${task.id}'),
+              key: _rowKey(sectionIndex, task),
               task: task,
               index: index,
               reorderable: true,
@@ -399,7 +422,7 @@ class _SectionedTaskListState extends State<SectionedTaskList> {
             (context, index) {
               final task = section.tasks[index];
               return TaskTile(
-                key: ValueKey('${sectionIndex}_${task.id}'),
+                key: _rowKey(sectionIndex, task),
                 task: task,
                 index: index,
                 reorderable: false,
@@ -412,13 +435,7 @@ class _SectionedTaskListState extends State<SectionedTaskList> {
               );
             },
             childCount: section.tasks.length,
-            findChildIndexCallback: (key) {
-              if (key is! ValueKey<String>) return null;
-              final idx = section.tasks.indexWhere(
-                (t) => '${sectionIndex}_${t.id}' == key.value,
-              );
-              return idx == -1 ? null : idx;
-            },
+            findChildIndexCallback: findIndex,
           ),
         ),
       );
@@ -464,33 +481,40 @@ class TaskTile extends StatefulWidget {
 }
 
 class _TaskTileState extends State<TaskTile> {
+  static final _dateFormat = DateFormat.MMMd();
+
   bool _isEditing = false;
-  late TextEditingController _controller;
-  final FocusNode _focusNode = FocusNode();
+
+  // Created on the first edit rather than with the row. Rows are built and
+  // torn down in bulk (scrolling, and every insert above them in a
+  // reorderable list remounts them), and almost none are ever edited.
+  TextEditingController? _controller;
+  FocusNode? _focusNode;
+
   final GlobalKey _moreButtonKey = GlobalKey();
   final GlobalKey _titleTextKey = GlobalKey();
   Offset? _tapDownPosition;
 
   @override
-  void initState() {
-    super.initState();
-    _controller = TextEditingController(text: widget.task.title);
-    _focusNode.addListener(() {
-      if (!_focusNode.hasFocus && _isEditing) {
-        _saveTitle();
-      }
-    });
-  }
-
-  @override
   void dispose() {
-    _controller.dispose();
-    _focusNode.dispose();
+    _controller?.dispose();
+    _focusNode?.dispose();
     super.dispose();
   }
 
+  void _onFocusChange() {
+    if (!_focusNode!.hasFocus && _isEditing) {
+      _saveTitle();
+    }
+  }
+
   void _startEditing() {
-    int cursorOffset = _controller.text.length;
+    // Always start from the stored title, which may have changed (a sync, an
+    // edit elsewhere) since this row was last edited.
+    final controller = (_controller ??= TextEditingController())
+      ..text = widget.task.title;
+    _focusNode ??= FocusNode()..addListener(_onFocusChange);
+    int cursorOffset = controller.text.length;
     final tapPos = _tapDownPosition;
     if (tapPos != null) {
       final ro = _titleTextKey.currentContext?.findRenderObject();
@@ -500,16 +524,16 @@ class _TaskTileState extends State<TaskTile> {
       }
       _tapDownPosition = null;
     }
-    _controller.selection = TextSelection.collapsed(offset: cursorOffset);
+    controller.selection = TextSelection.collapsed(offset: cursorOffset);
     setState(() => _isEditing = true);
   }
 
   void _saveTitle() {
     if (!mounted) return;
-    _focusNode.unfocus();
+    _focusNode?.unfocus();
 
     final state = context.read<AppState>();
-    final newTitle = _controller.text.trim();
+    final newTitle = _controller?.text.trim() ?? '';
     if (newTitle.isNotEmpty && newTitle != widget.task.title) {
       final updated = state.copyTask(
         widget.task,
@@ -550,139 +574,136 @@ class _TaskTileState extends State<TaskTile> {
         ? task.isCompletedOn(widget.toggleDate!)
         : task.isCompleted;
 
+    // Transparency rather than a transparent canvas: it gives the ink layer
+    // ListTile needs without the animated interior a canvas Material builds.
+    // No swipe-to-delete: horizontal drags interfere with selecting the task
+    // title text.
     return Material(
-      color: Colors.transparent,
-      child: Dismissible(
-        key: ValueKey(task.id),
-        // Swipe-to-delete is disabled: horizontal drags interfere with
-        // selecting the task title text.
-        direction: DismissDirection.none,
-        onDismissed: (_) => state.deleteTask(task.id),
-        child: Listener(
-          onPointerDown: (event) {
-            if (event.buttons == 2) {
-              _showEditDialog(context, event.position);
-            }
-          },
-          child: GestureDetector(
-            onSecondaryTapDown: (details) {},
-            onSecondaryTap: () {},
-            behavior: HitTestBehavior.opaque,
-            child: ListTile(
-              leading: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (widget.reorderable) ...[
-                    ReorderableDragStartListener(
-                      index: widget.index,
-                      child: Icon(
-                        Icons.drag_handle_rounded,
-                        color: Theme.of(
-                          context,
-                        ).colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
-                      ),
-                    ),
-                    const SizedBox(width: 4),
-                  ],
-                  Checkbox(
-                    value: completed,
-                    onChanged: (_) =>
-                        state.toggleTask(task, onDate: widget.toggleDate),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                  ),
-                ],
-              ),
-              title: _isEditing
-                  ? TextField(
-                      controller: _controller,
-                      focusNode: _focusNode,
-                      autofocus: true,
-                      style: Theme.of(context).textTheme.bodyLarge,
-                      decoration: const InputDecoration(
-                        border: InputBorder.none,
-                        isDense: true,
-                        contentPadding: EdgeInsets.zero,
-                      ),
-                      onSubmitted: (_) => _saveTitle(),
-                      onTapOutside: (_) => _saveTitle(),
-                    )
-                  : Listener(
-                      onPointerDown: (event) {
-                        _tapDownPosition = event.position;
-                      },
-                      child: _buildTitle(context, completed),
-                    ),
-              subtitle:
-                  widget.subtitleBuilder?.call(context, task) ??
-                  _buildSubtitle(context, state),
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (task.scheduledDate != null)
-                    Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: Text(
-                        DateFormat.MMMd().format(task.scheduledDate!),
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ),
-                  if (isRecurring)
-                    Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: Icon(
-                        Icons.repeat,
-                        size: 16,
-                        color: Theme.of(
-                          context,
-                        ).colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
-                      ),
-                    ),
-                  if (hasNotes)
-                    Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: Icon(
-                        Icons.notes,
-                        size: 16,
-                        color: Theme.of(
-                          context,
-                        ).colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
-                        semanticLabel: 'Has notes',
-                      ),
-                    ),
-                  IconButton(
-                    key: _moreButtonKey,
-                    icon: Icon(
-                      Icons.more_horiz,
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-                    onPressed: () {
-                      final RenderBox button =
-                          _moreButtonKey.currentContext!.findRenderObject()
-                              as RenderBox;
-                      final Offset buttonPosition = button.localToGlobal(
-                        Offset.zero,
-                      );
-                      _showEditDialog(
+      type: MaterialType.transparency,
+      child: Listener(
+        onPointerDown: (event) {
+          if (event.buttons == 2) {
+            _showEditDialog(context, event.position);
+          }
+        },
+        child: GestureDetector(
+          onSecondaryTapDown: (details) {},
+          onSecondaryTap: () {},
+          behavior: HitTestBehavior.opaque,
+          child: ListTile(
+            leading: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (widget.reorderable) ...[
+                  ReorderableDragStartListener(
+                    index: widget.index,
+                    child: Icon(
+                      Icons.drag_handle_rounded,
+                      color: Theme.of(
                         context,
-                        Offset(
-                          buttonPosition.dx,
-                          buttonPosition.dy + button.size.height,
-                        ),
-                      );
-                    },
+                      ).colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                    ),
                   ),
+                  const SizedBox(width: 4),
                 ],
-              ),
-              selected: widget.selected,
-              onTap: () {
-                widget.onSelected?.call(widget.task);
-                _startEditing();
-              },
+                Checkbox(
+                  value: completed,
+                  onChanged: (_) =>
+                      state.toggleTask(task, onDate: widget.toggleDate),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ),
+              ],
             ),
+            title: _isEditing
+                ? TextField(
+                    controller: _controller!,
+                    focusNode: _focusNode!,
+                    autofocus: true,
+                    style: Theme.of(context).textTheme.bodyLarge,
+                    decoration: const InputDecoration(
+                      border: InputBorder.none,
+                      isDense: true,
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                    onSubmitted: (_) => _saveTitle(),
+                    onTapOutside: (_) => _saveTitle(),
+                  )
+                : Listener(
+                    onPointerDown: (event) {
+                      _tapDownPosition = event.position;
+                    },
+                    child: _buildTitle(context, completed),
+                  ),
+            subtitle:
+                widget.subtitleBuilder?.call(context, task) ??
+                _buildSubtitle(context, state),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (task.scheduledDate != null)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: Text(
+                      _dateFormat.format(task.scheduledDate!),
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                if (isRecurring)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: Icon(
+                      Icons.repeat,
+                      size: 16,
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                    ),
+                  ),
+                if (hasNotes)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: Icon(
+                      Icons.notes,
+                      size: 16,
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                      semanticLabel: 'Has notes',
+                    ),
+                  ),
+                IconButton(
+                  key: _moreButtonKey,
+                  icon: Icon(
+                    Icons.more_horiz,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                  onPressed: () {
+                    final RenderBox button =
+                        _moreButtonKey.currentContext!.findRenderObject()
+                            as RenderBox;
+                    final Offset buttonPosition = button.localToGlobal(
+                      Offset.zero,
+                    );
+                    _showEditDialog(
+                      context,
+                      Offset(
+                        buttonPosition.dx,
+                        buttonPosition.dy + button.size.height,
+                      ),
+                    );
+                  },
+                ),
+              ],
+            ),
+            selected: widget.selected,
+            onTap: () {
+              widget.onSelected?.call(widget.task);
+              _startEditing();
+            },
           ),
         ),
       ),

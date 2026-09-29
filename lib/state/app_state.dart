@@ -14,6 +14,7 @@ import '../sync/dropbox_store.dart';
 import '../sync/engine/replica.dart';
 import '../sync/engine/sync_engine.dart';
 import '../sync/local_store.dart';
+import '../sync/model/entities.dart';
 import '../sync/model/hlc.dart';
 import '../sync/model/ops.dart';
 import '../utils/uuid128.dart';
@@ -70,41 +71,81 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   List<Tag>? _tagsCache;
   List<SmartList>? _smartListsCache;
 
+  /// Tasks grouped by (list, completed) lane, and each lane in its stored
+  /// order. The sidebar and the open list ask for these on every build, and
+  /// each used to be its own scan over every task.
+  Map<(Uuid128, bool), List<Task>>? _laneMembersCache;
+  final Map<(Uuid128, bool), List<Task>> _orderedLaneCache = {};
+
+  /// Smart-list badge counts, keyed by smart list id. Date filters depend on
+  /// the day as well as the data, so the cache also drops at midnight.
+  final Map<Uuid128, int> _smartListCountCache = {};
+  DateTime? _smartListCountDay;
+
   void _invalidate() {
     _tasksCache = null;
     _listsCache = null;
     _foldersCache = null;
     _tagsCache = null;
     _smartListsCache = null;
+    _laneMembersCache = null;
+    _orderedLaneCache.clear();
+    _smartListCountCache.clear();
   }
 
   Replica get _replica => _engine.replica;
 
-  List<Task> get tasks => _tasksCache ??= DomainMapper.allTasks(_replica);
+  final _taskProjection = _Projection<Task>(
+    EntityKind.task,
+    DomainMapper.taskFrom,
+  );
+  final _listProjection = _Projection<TaskList>(
+    EntityKind.list,
+    DomainMapper.listFrom,
+  );
+  final _folderProjection = _Projection<Folder>(
+    EntityKind.folder,
+    DomainMapper.folderFrom,
+  );
+  final _tagProjection = _Projection<Tag>(EntityKind.tag, DomainMapper.tagFrom);
+  final _smartListProjection = _Projection<SmartList>(
+    EntityKind.smartList,
+    DomainMapper.smartListFrom,
+  );
+
+  List<Task> get tasks => _tasksCache ??= _taskProjection.project(_replica);
 
   List<TaskList> get lists =>
-      _listsCache ??= DomainMapper.allLists(_replica)..sort(_bySidebarOrder);
+      _listsCache ??= _sortedBySidebar(_listProjection.project(_replica));
 
   List<Folder> get folders =>
-      _foldersCache ??= DomainMapper.allFolders(_replica)
-        ..sort(_bySidebarOrder);
+      _foldersCache ??= _sortedBySidebar(_folderProjection.project(_replica));
 
-  List<Tag> get tags => _tagsCache ??= DomainMapper.allTags(_replica);
+  List<Tag> get tags => _tagsCache ??= _tagProjection.project(_replica);
 
   List<SmartList> get smartLists =>
-      _smartListsCache ??= DomainMapper.allSmartLists(_replica);
+      _smartListsCache ??= _smartListProjection.project(_replica);
 
   /// Lists and folders share one ordering array, so both sort by their
   /// position in it.
-  int _bySidebarOrder(Object a, Object b) {
-    final order = _replica.orders[DomainMapper.sidebarScope]?.value ?? const [];
-    final ia = order.indexOf(_idOf(a));
-    final ib = order.indexOf(_idOf(b));
-    if (ia == ib) return 0;
-    // Anything absent from the array sorts last, deterministically.
-    if (ia < 0) return 1;
-    if (ib < 0) return -1;
-    return ia.compareTo(ib);
+  ///
+  /// Positions are looked up once up front: resolving the array inside the
+  /// comparator made every comparison rebuild every ordering scope.
+  List<T> _sortedBySidebar<T extends Object>(List<T> items) {
+    final order = _replica.resolvedOrder(DomainMapper.sidebarScope);
+    final position = <Uuid128, int>{};
+    for (var i = 0; i < order.length; i++) {
+      position.putIfAbsent(order[i], () => i);
+    }
+    return items..sort((a, b) {
+      final ia = position[_idOf(a)] ?? -1;
+      final ib = position[_idOf(b)] ?? -1;
+      if (ia == ib) return 0;
+      // Anything absent from the array sorts last, deterministically.
+      if (ia < 0) return 1;
+      if (ib < 0) return -1;
+      return ia.compareTo(ib);
+    });
   }
 
   static Uuid128 _idOf(Object o) => switch (o) {
@@ -136,7 +177,13 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
       chunks: savedState.loadedChunks,
       segments: savedState.appliedSegments,
     );
-    _engine.restorePending(await _local.loadPending());
+    // The replica snapshot is written lazily, so it can trail the pending
+    // log by the last few edits. Replaying the log is always safe (applying
+    // an op twice is a no-op) and brings the snapshot back up to date.
+    final pending = await _local.loadPending();
+    replica.applyAll(pending);
+    _clock.observe(replica.maxHlc);
+    _engine.restorePending(pending);
 
     _initialised = true;
     _invalidate();
@@ -160,6 +207,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   void dispose() {
     _stopPolling();
     _pushTimer?.cancel();
+    if (_snapshotTimer != null) unawaited(_persistLocal());
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -175,6 +223,11 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
       _stopPolling();
       // Flush anything buffered before the OS can freeze or kill us.
       unawaited(_flushNow());
+    }
+    // A stale snapshot only costs a replay on the next launch, but there is
+    // no reason to leave one pending while the app is going away.
+    if (state != AppLifecycleState.resumed && _snapshotTimer != null) {
+      unawaited(_persistLocal());
     }
   }
 
@@ -193,11 +246,34 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     _engine.recordAll(ops);
     _invalidate();
     notifyListeners();
-    unawaited(_persistLocal());
+    // The pending log is the durable record of this edit and costs only the
+    // new ops, so it is written now. The full snapshot is O(everything) and
+    // is batched: a burst of edits (typing, dragging, ticking a column of
+    // boxes) pays for it once instead of once per edit.
+    unawaited(_savePending());
+    _scheduleSnapshot();
     _schedulePush();
   }
 
+  Timer? _snapshotTimer;
+  static const _snapshotDebounce = Duration(milliseconds: 800);
+
+  void _scheduleSnapshot() {
+    _snapshotTimer?.cancel();
+    _snapshotTimer = Timer(_snapshotDebounce, () => unawaited(_persistLocal()));
+  }
+
+  Future<void> _savePending() async {
+    try {
+      await _local.savePending(_pendingOps(), _engine.deviceId);
+    } catch (e) {
+      debugPrint('Local persist failed: $e');
+    }
+  }
+
   Future<void> _persistLocal() async {
+    _snapshotTimer?.cancel();
+    _snapshotTimer = null;
     try {
       await _local.saveReplica(_replica);
       await _local.savePending(_pendingOps(), _engine.deviceId);
@@ -280,27 +356,55 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   List<Task> tasksForList(Uuid128 listId) =>
       tasks.where((t) => t.listId == listId).toList();
 
+  Map<(Uuid128, bool), List<Task>> get _laneMembers =>
+      _laneMembersCache ??= () {
+        final lanes = <(Uuid128, bool), List<Task>>{};
+        for (final t in tasks) {
+          (lanes[(t.listId, t.isCompleted)] ??= []).add(t);
+        }
+        return lanes;
+      }();
+
   /// Tasks of one list in their stored order.
   ///
   /// Order comes from the dense array for the (list, lane) scope; membership
   /// comes from the tasks themselves, so a task can never be orphaned by a
   /// stale ordering entry.
+  ///
+  /// The result is cached until the next change and must not be modified.
   List<Task> tasksForListOrdered(
     Uuid128 listId, {
     required bool completedSection,
   }) {
-    final members = <Uuid128, Task>{
-      for (final t in tasks)
-        if (t.listId == listId && t.isCompleted == completedSection) t.id: t,
-    };
-    if (members.isEmpty) return const [];
+    final key = (listId, completedSection);
+    return _orderedLaneCache[key] ??= () {
+      final lane = _laneMembers[key];
+      if (lane == null) return const <Task>[];
+      final members = <Uuid128, Task>{for (final t in lane) t.id: t};
+      final scope = DomainMapper.taskScope(listId, completed: completedSection);
+      final ordered = _replica.orderedIds(scope, members.keys.toSet());
+      return List<Task>.unmodifiable([
+        for (final id in ordered)
+          if (members[id] case final t?) t,
+      ]);
+    }();
+  }
 
-    final scope = DomainMapper.taskScope(listId, completed: completedSection);
-    final ordered = _replica.orderedIds(scope, members.keys.toSet());
-    return [
-      for (final id in ordered)
-        if (members[id] case final t?) t,
-    ];
+  /// Incomplete tasks in [listId], for the sidebar badge.
+  int pendingCountForList(Uuid128 listId) =>
+      _laneMembers[(listId, false)]?.length ?? 0;
+
+  /// How many tasks [smartList] shows as outstanding, for its badge.
+  int smartListCount(SmartList smartList) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    if (_smartListCountDay != today) {
+      _smartListCountCache.clear();
+      _smartListCountDay = today;
+    }
+    return _smartListCountCache[smartList.id] ??= smartList.filter.countTasks(
+      tasks,
+    );
   }
 
   Uuid128 newId() => Uuid128.generateV4();
@@ -731,5 +835,39 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
       await _syncNow(showSpinner: true);
       _startPolling();
     }
+  }
+}
+
+/// Projects one entity kind into domain models, reusing the model made last
+/// time for every entity whose version has not moved.
+///
+/// Same result as the matching `DomainMapper.all*`, but an edit re-decodes
+/// only the entities it touched. Unchanged models also keep their identity
+/// across rebuilds, which is what lets widgets tell cheaply that nothing they
+/// show has changed.
+class _Projection<T extends Object> {
+  final EntityKind kind;
+  final T? Function(ReplicatedEntity) decode;
+
+  _Projection(this.kind, this.decode);
+
+  /// Keyed by identity: a replica rebuilt from scratch holds new entity
+  /// objects, which correctly miss.
+  Map<ReplicatedEntity, (int, T?)> _last = Map.identity();
+
+  List<T> project(Replica replica) {
+    final previous = _last;
+    final next = Map<ReplicatedEntity, (int, T?)>.identity();
+    final out = <T>[];
+    for (final e in replica.live(kind)) {
+      final cached = previous[e];
+      final model = cached != null && cached.$1 == e.version
+          ? cached.$2
+          : decode(e);
+      next[e] = (e.version, model);
+      if (model != null) out.add(model);
+    }
+    _last = next;
+    return out;
   }
 }

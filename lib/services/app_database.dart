@@ -1,5 +1,6 @@
 import 'package:drift/drift.dart';
 import 'package:drift_flutter/drift_flutter.dart';
+import 'package:flutter/foundation.dart' show visibleForTesting;
 
 part 'app_database.g.dart';
 
@@ -210,6 +211,14 @@ class AppDatabase extends _$AppDatabase {
   factory AppDatabase() => _instance ??= AppDatabase._internal();
 
   AppDatabase._internal() : super(_openConnection());
+
+  /// A database over [executor] (for tests, an in-memory one).
+  AppDatabase.forTesting(super.executor);
+
+  /// Makes every later `AppDatabase()` return [db], so a test can mount the
+  /// real app state and pages over an in-memory database.
+  @visibleForTesting
+  static void useForTesting(AppDatabase? db) => _instance = db;
 
   static QueryExecutor _openConnection() {
     return driftDatabase(

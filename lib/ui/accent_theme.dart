@@ -12,30 +12,40 @@ class AccentTheme extends StatelessWidget {
 
   const AccentTheme({super.key, required this.accent, required this.child});
 
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final accent = this.accent;
-    if (accent == null) return child;
+  /// Accented themes, per base theme and accent.
+  ///
+  /// [ColorScheme.fromSeed] runs a tonal-palette solve that is far too slow
+  /// to repeat on every rebuild of the page. Handing back the same instance
+  /// also lets [Theme] skip notifying dependents without a deep comparison.
+  /// Keyed by identity through an [Expando], so a base theme that goes away
+  /// takes its entries with it.
+  static final _accented = Expando<Map<Color, ThemeData>>();
 
-    // Seeding keeps the derived tones (containers, `on*` pairs) legible even
-    // for colors that would clash if dropped straight onto `primary`. The
-    // original surface is kept so only accents shift, not the page itself.
-    final scheme = ColorScheme.fromSeed(
-      seedColor: accent,
-      brightness: theme.brightness,
-      surface: theme.colorScheme.surface,
-    );
-
-    return Theme(
-      data: theme.copyWith(
+  static ThemeData _accentedTheme(ThemeData theme, Color accent) {
+    final perBase = _accented[theme] ??= {};
+    return perBase[accent] ??= () {
+      // Seeding keeps the derived tones (containers, `on*` pairs) legible
+      // even for colors that would clash if dropped straight onto `primary`.
+      // The original surface is kept so only accents shift, not the page.
+      final scheme = ColorScheme.fromSeed(
+        seedColor: accent,
+        brightness: theme.brightness,
+        surface: theme.colorScheme.surface,
+      );
+      return theme.copyWith(
         colorScheme: scheme,
-        // These default off the old scheme at construction, so they need to be
-        // pointed at the new one explicitly.
+        // These default off the old scheme at construction, so they need to
+        // be pointed at the new one explicitly.
         primaryColor: scheme.primary,
         dividerColor: theme.dividerColor,
-      ),
-      child: child,
-    );
+      );
+    }();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = this.accent;
+    if (accent == null) return child;
+    return Theme(data: _accentedTheme(Theme.of(context), accent), child: child);
   }
 }

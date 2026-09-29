@@ -51,6 +51,11 @@ class Replica {
   Iterable<ReplicatedEntity> live(EntityKind kind) =>
       entities.values.where((e) => e.kind == kind && !e.isDeleted);
 
+  /// The resolved ordering array for one [scope], unfiltered. Unlike
+  /// [orders] this resolves only the scope asked for.
+  List<Uuid128> resolvedOrder(OrderScope scope) =>
+      _orderState[scope]?.resolve() ?? const [];
+
   /// The dense ordering array for [scope], filtered to ids that still exist
   /// and are live, with any live-but-unordered ids appended.
   ///
@@ -220,15 +225,37 @@ class _OrderState {
     _baselineHlc = hlc;
     // Moves at or before the new baseline are already folded into it.
     _moves.removeWhere((_, m) => m.hlc <= hlc);
+    // Any retained move is newer than the baseline, so the baseline is the
+    // floor for the next fast-path check.
+    _latestMove = hlc;
+    for (final m in _moves.values) {
+      if (m.hlc > _latestMove) _latestMove = m.hlc;
+    }
     _cache = null;
   }
+
+  /// Newest move retained, so [addMove] can tell a move that simply lands
+  /// last in replay order from one that rewrites the middle of it.
+  Hlc _latestMove = Hlc.zero;
 
   void addMove(Uuid128 id, Uuid128? after, Hlc hlc) {
     if (hlc <= _baselineHlc) return; // superseded by the baseline
     final existing = _moves[id];
     if (existing != null && existing.hlc >= hlc) return;
     _moves[id] = (after: after, hlc: hlc);
-    _cache = null;
+
+    // A move newer than every retained one, of an item with no earlier move,
+    // is replayed last and supersedes nothing, so applying it to the cached
+    // result is exactly what a full replay would produce. This is the path
+    // every local drag or add takes; replaying the whole history for it
+    // cost O(moves × length) per edit.
+    final cached = _cache;
+    if (cached != null && existing == null && hlc > _latestMove) {
+      _cache = _applyMove(List<Uuid128>.from(cached), id, after);
+    } else {
+      _cache = null;
+    }
+    if (hlc > _latestMove) _latestMove = hlc;
   }
 
   OrderSnapshot toSnapshot() => OrderSnapshot(
@@ -252,25 +279,116 @@ class _OrderState {
     final cached = _cache;
     if (cached != null) return cached;
 
-    final out = List<Uuid128>.from(_baseline);
     final pending = _moves.entries.toList()
       ..sort((a, b) => a.value.hlc.compareTo(b.value.hlc));
 
-    for (final entry in pending) {
-      final id = entry.key;
-      final after = entry.value.after;
-      out.remove(id);
-      if (after == null) {
-        out.insert(0, id);
+    final out = _replayLinked(pending);
+    _cache = out;
+    return out;
+  }
+
+  /// Replays [moves] over the baseline in O(baseline + moves).
+  ///
+  /// Replaying on the array itself costs a linear search and shift per move,
+  /// and moves are only folded away by a new baseline, which a device that
+  /// never syncs never gets: every task added is one more move, so each
+  /// resolve grew as O(history × length). A linked list keyed by id makes
+  /// each move constant time.
+  ///
+  /// The array replay acts on the *first* occurrence of an id. With unique
+  /// ids that is the only occurrence and the two agree exactly; a baseline
+  /// holding a duplicate (only a corrupt or hand-built one could) falls back
+  /// to the array replay, keeping its semantics.
+  List<Uuid128> _replayLinked(
+    List<MapEntry<Uuid128, ({Uuid128? after, Hlc hlc})>> moves,
+  ) {
+    final next = <Uuid128, Uuid128?>{};
+    final prev = <Uuid128, Uuid128?>{};
+    Uuid128? head;
+    Uuid128? tail;
+
+    for (final id in _baseline) {
+      if (next.containsKey(id)) return _replayArray(moves);
+      prev[id] = tail;
+      next[id] = null;
+      if (tail == null) {
+        head = id;
       } else {
-        final idx = out.indexOf(after);
-        // Anchor missing (not synced yet, or deleted): append rather than
-        // drop, so a move can never lose the item.
-        out.insert(idx < 0 ? out.length : idx + 1, id);
+        next[tail] = id;
+      }
+      tail = id;
+    }
+
+    for (final m in moves) {
+      final id = m.key;
+      final after = m.value.after;
+      if (next.containsKey(id)) {
+        final p = prev.remove(id);
+        final n = next.remove(id);
+        if (p == null) {
+          head = n;
+        } else {
+          next[p] = n;
+        }
+        if (n == null) {
+          tail = p;
+        } else {
+          prev[n] = p;
+        }
+      }
+      // Anchor missing (not synced yet, deleted, or the item itself):
+      // append rather than drop, so a move can never lose the item.
+      final Uuid128? p = after == null
+          ? null
+          : next.containsKey(after)
+          ? after
+          : tail;
+      final n = p == null ? head : next[p];
+      prev[id] = p;
+      next[id] = n;
+      if (p == null) {
+        head = id;
+      } else {
+        next[p] = id;
+      }
+      if (n == null) {
+        tail = id;
+      } else {
+        prev[n] = id;
       }
     }
 
-    _cache = out;
+    final out = <Uuid128>[];
+    for (Uuid128? id = head; id != null; id = next[id]) {
+      out.add(id);
+    }
+    return out;
+  }
+
+  List<Uuid128> _replayArray(
+    List<MapEntry<Uuid128, ({Uuid128? after, Hlc hlc})>> moves,
+  ) {
+    final out = List<Uuid128>.from(_baseline);
+    for (final m in moves) {
+      _applyMove(out, m.key, m.value.after);
+    }
+    return out;
+  }
+
+  static List<Uuid128> _applyMove(
+    List<Uuid128> out,
+    Uuid128 id,
+    Uuid128? after,
+  ) {
+    out.remove(id);
+    if (after == null) {
+      out.insert(0, id);
+    } else {
+      final idx = out.indexOf(after);
+      // Anchor missing (not synced yet, or deleted): append rather than
+      // drop, so a move can never lose the item.
+      out.insert(idx < 0 ? out.length : idx + 1, id);
+    }
     return out;
   }
 }
