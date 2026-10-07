@@ -7,6 +7,7 @@ import 'package:drift/drift.dart';
 import 'package:flutter/foundation.dart' show debugPrint;
 
 import '../services/app_database.dart';
+import 'backup.dart';
 import 'engine/replica.dart';
 import 'format/chunk.dart';
 import 'format/segment.dart';
@@ -246,13 +247,134 @@ class LocalStore {
 
   /// Wipe everything this store owns. Used by the migration tool and by a
   /// "reset local cache" action.
+  ///
+  /// Backups survive: being there after the live data is gone is their job.
   Future<void> clear() async {
     await _deleteBlob(_keyReplica);
     await _deletePendingLog();
     _persistedPending = const [];
     _pendingTails = 0;
-    await _db.delete(_db.uiStateEntries).go();
+    await (_db.delete(_db.uiStateEntries)..where(
+          (t) =>
+              t.key.like('$_backupPrefix%').not() &
+              t.key.like('$_backupMetaPrefix%').not() &
+              t.key.equals(_keyBackupKeep).not(),
+        ))
+        .go();
   }
+
+  // ───── Full backups ─────
+  //
+  // Each backup is the whole replica as one chunk blob, like the live
+  // snapshot, plus a small JSON row describing it so the settings page can
+  // list backups without decoding any of them.
+
+  static const _backupPrefix = 'backup.';
+  static const _backupMetaPrefix = 'backup_meta.';
+  static const _keyBackupKeep = 'backup_keep';
+  static const defaultBackupKeep = 10;
+
+  /// Save [replica] as a new backup. Returns null when it is identical to
+  /// the most recent one, which is kept instead.
+  Future<BackupInfo?> saveBackup(
+    Replica replica, {
+    required String reason,
+    DateTime? at,
+  }) async {
+    final bytes = Chunk.build(
+      replica.entities.values.toList(),
+      replica.orderSnapshots,
+    ).encode();
+    final crc = Chunk.digest(bytes);
+    final existing = await listBackups();
+    if (existing.isNotEmpty && existing.first.crc == crc) return null;
+
+    final when = at ?? DateTime.now();
+    var id = when.microsecondsSinceEpoch;
+    // Ids double as keys and must stay unique and increasing.
+    if (existing.isNotEmpty && id <= existing.first.id) {
+      id = existing.first.id + 1;
+    }
+    final info = BackupInfo(
+      id: id,
+      createdAt: when,
+      reason: reason,
+      taskCount: replica.live(EntityKind.task).length,
+      listCount: replica.live(EntityKind.list).length,
+      bytes: bytes.length,
+      crc: crc,
+      pinned: false,
+    );
+    await _db.transaction(() async {
+      await _putBlob('$_backupPrefix$id', bytes);
+      await _putString('$_backupMetaPrefix$id', jsonEncode(info.toJson()));
+    });
+    return info;
+  }
+
+  /// Every backup, newest first.
+  Future<List<BackupInfo>> listBackups() async {
+    final rows = await (_db.select(
+      _db.uiStateEntries,
+    )..where((t) => t.key.like('$_backupMetaPrefix%'))).get();
+    final out = <BackupInfo>[];
+    for (final row in rows) {
+      final id = int.tryParse(row.key.substring(_backupMetaPrefix.length));
+      if (id == null) continue;
+      try {
+        out.add(
+          BackupInfo.fromJson(
+            id,
+            jsonDecode(row.value) as Map<String, dynamic>,
+          ),
+        );
+      } catch (e) {
+        debugPrint('Backup $id unreadable, skipping: $e');
+      }
+    }
+    return out..sort((a, b) => b.id.compareTo(a.id));
+  }
+
+  /// Decode one backup. Throws if it is missing or corrupt: a restore must
+  /// never quietly proceed from an empty replica.
+  Future<Replica> loadBackup(int id) async {
+    final bytes = await _getBlob('$_backupPrefix$id');
+    if (bytes == null) throw StateError('Backup $id not found');
+    return Replica()..loadChunk(Chunk.decode(bytes));
+  }
+
+  Future<void> deleteBackup(int id) async {
+    await _db.transaction(() async {
+      await _deleteBlob('$_backupPrefix$id');
+      await _deleteBlob('$_backupMetaPrefix$id');
+    });
+  }
+
+  Future<void> setBackupPinned(int id, bool pinned) async {
+    final info = (await listBackups()).where((b) => b.id == id).firstOrNull;
+    if (info == null) return;
+    await _putString(
+      '$_backupMetaPrefix$id',
+      jsonEncode(info.copyWith(pinned: pinned).toJson()),
+    );
+  }
+
+  /// Delete the oldest unpinned backups beyond the newest [keep].
+  Future<void> pruneBackups(int keep) async {
+    final unpinned = (await listBackups()).where((b) => !b.pinned).toList();
+    for (final b in unpinned.skip(keep)) {
+      await deleteBackup(b.id);
+    }
+  }
+
+  /// How many unpinned backups to keep.
+  Future<int> backupKeep() async {
+    final raw = await _getString(_keyBackupKeep);
+    return int.tryParse(raw ?? '') ?? defaultBackupKeep;
+  }
+
+  Future<void> setBackupKeep(int keep) =>
+      _putString(_keyBackupKeep, keep.toString());
 
   // ───── Blob helpers ─────
   //

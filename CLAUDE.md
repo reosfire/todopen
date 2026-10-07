@@ -70,7 +70,9 @@ Correctness rests on five things:
 - **Dense ordering arrays.** Order is an array plus replayed moves, so a
   reorder is one op and the ordering cannot corrupt.
 - **Checksums.** Every stored block is CRC-32C protected; a truncated or
-  corrupt download is rejected rather than replayed.
+  corrupt download is rejected rather than replayed. A chunk's identity is
+  `Chunk.digest` (CRC of the body). Never CRC a whole encoded block: data
+  followed by its own CRC-32C always hashes to the same constant.
 
 ```
 lib/sync/format/     binary codecs (byte_io, segment, chunk, manifest)
@@ -138,6 +140,14 @@ Two different stores, deliberately:
 - `services/storage_service.dart` — local-only UI preferences (expanded
   folders, current selection). Never synced: which list is open on your phone
   should not move the selection on your desktop.
+
+Local full backups (`sync/backup.dart`, stored by `LocalStore`) are the
+replica as a chunk blob plus a JSON metadata row, taken before a sync at most
+hourly, before force download and before a restore; empty or unchanged
+replicas are skipped so they cannot push real backups out of retention.
+`LocalStore.clear()` keeps them. A restore is emitted as fresh ops
+(`restoreOps`), never by swapping the replica — older stamps would lose the
+merge and the next pull would undo it.
 
 Both sit on the same drift database (`services/app_database.dart`). Its
 relational task/tag tables are v1 leftovers; live data is in the blob.

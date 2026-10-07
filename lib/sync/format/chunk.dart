@@ -72,6 +72,20 @@ class Chunk {
     );
   }
 
+  /// Content identity of an encoded chunk: the CRC-32C of its body, which is
+  /// also the value stored in its trailer.
+  ///
+  /// Never take the CRC of the whole file. A CRC over data followed by its
+  /// own CRC is a constant (CRC-32C's residue), so every chunk would hash to
+  /// [legacyWholeFileCrc] and two chunks would compare equal whenever their
+  /// sizes did.
+  static int digest(Uint8List encoded) =>
+      Crc32c.compute(encoded, 0, encoded.length - 4);
+
+  /// What older builds recorded as every chunk's crc (see [digest]). A
+  /// manifest entry carrying it identifies nothing and cannot be verified.
+  static const legacyWholeFileCrc = 0x48674BC7;
+
   // ───── Encoding ─────
 
   Uint8List encode() {

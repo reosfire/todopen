@@ -4,7 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:todopen/models/task.dart';
 import 'package:todopen/sync/domain_mapper.dart';
 import 'package:todopen/sync/engine/sync_engine.dart';
-import 'package:todopen/sync/format/crc32c.dart';
+import 'package:todopen/sync/format/chunk.dart';
 import 'package:todopen/sync/format/manifest.dart';
 import 'package:todopen/sync/model/hlc.dart';
 import 'package:todopen/sync/model/ops.dart';
@@ -716,7 +716,7 @@ void main() {
         final b = store.files[c.path];
         expect(b, isNotNull, reason: c.path);
         expect(b!.length, c.size, reason: c.path);
-        expect(Crc32c.compute(b), c.crc, reason: c.path);
+        expect(Chunk.digest(b), c.crc, reason: c.path);
       }
     }
 
@@ -870,5 +870,40 @@ void main() {
         expect(fresh.replica.get(EntityKind.task, uid(2)), isNotNull);
       },
     );
+
+    test('an edit that leaves a shard the same size is not dropped by '
+        'compaction', () async {
+      final store = FakeStore();
+      final a = engineFor(store, 1, policy: const SyncPolicy(maxSegments: 1));
+      addTask(a, uid(1), 'aaaa');
+      await a.sync();
+
+      void rename(String title) => a.record(
+        SetFieldOp(
+          a.clock.issue(),
+          EntityKind.task,
+          uid(1),
+          TaskField.title,
+          StringValue(title),
+        ),
+      );
+      // The first edit gives the title its own stamp, which changes the
+      // size; the second changes only content. Whole-file CRCs are all the
+      // same constant, so the old check saw "same size" as "unchanged",
+      // kept the stale chunk and collected the segment holding the edit.
+      rename('bbbb');
+      await a.sync();
+      rename('cccc');
+      await a.sync();
+
+      expectConsistent(store);
+      final fresh = await freshView(store);
+      expect(
+        fresh.replica
+            .get(EntityKind.task, uid(1))!
+            .stringField(TaskField.title),
+        'cccc',
+      );
+    });
   });
 }

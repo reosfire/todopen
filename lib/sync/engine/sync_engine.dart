@@ -4,7 +4,6 @@ import 'dart:typed_data';
 
 import '../../utils/uuid128.dart';
 import '../format/chunk.dart';
-import '../format/crc32c.dart';
 import '../format/manifest.dart';
 import '../format/segment.dart';
 import '../model/entities.dart';
@@ -443,7 +442,11 @@ class SyncEngine {
         bytes += b.length;
         // Merging is monotone, so the content is worth keeping either way.
         replica.loadChunk(Chunk.decode(b));
-        if (b.length == ref.size && Crc32c.compute(b) == ref.crc) {
+        // Entries from older builds carry a constant crc and cannot be
+        // checked; they are rewritten at the next compaction regardless.
+        final verifiable = ref.crc != Chunk.legacyWholeFileCrc;
+        if (b.length == ref.size &&
+            (!verifiable || Chunk.digest(b) == ref.crc)) {
           _loadedChunks[ref.shard] = _chunkIdentity(ref);
           _damagedShards.remove(ref.shard);
         } else {
@@ -566,7 +569,7 @@ class SyncEngine {
       );
       final prev = previous[shard];
       final bytes = chunk.encode();
-      final digest = Crc32c.compute(bytes);
+      final digest = Chunk.digest(bytes);
 
       // Carry a shard over untouched only when its encoded bytes are
       // identical to what is already published.

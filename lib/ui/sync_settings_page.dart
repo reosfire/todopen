@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../state/app_state.dart';
+import 'backups_card.dart';
 
 class SyncSettingsPage extends StatelessWidget {
   const SyncSettingsPage({super.key});
@@ -110,6 +111,10 @@ class SyncSettingsPage extends StatelessWidget {
                 child: Center(child: CircularProgressIndicator()),
               ),
           ],
+
+          // ── Local backups ──
+          const SizedBox(height: 16),
+          const BackupsCard(),
 
           // ── Info card ──
           const SizedBox(height: 24),

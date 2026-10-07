@@ -11,6 +11,7 @@ import '../models/task.dart';
 import '../models/task_list.dart';
 import '../services/dropbox_service.dart';
 import '../sync/activity_store.dart';
+import '../sync/backup.dart';
 import '../sync/domain_mapper.dart';
 import '../sync/dropbox_store.dart';
 import '../sync/engine/replica.dart';
@@ -62,6 +63,22 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   String? _longpollCursor;
 
   bool get loading => _loading;
+
+  // ───── Local backups ─────
+
+  List<BackupInfo> _backups = const [];
+  int _backupKeep = LocalStore.defaultBackupKeep;
+  bool _backedUpThisSession = false;
+
+  /// Syncs happen after nearly every edit; a backup at most this often keeps
+  /// the retained ones spread over hours rather than minutes.
+  static const _backupInterval = Duration(hours: 1);
+
+  /// Local full backups, newest first.
+  List<BackupInfo> get backups => _backups;
+
+  /// How many unpinned backups are kept.
+  int get backupKeep => _backupKeep;
 
   /// Whether data is going up or coming down right now. A separate
   /// listenable so a request starting does not rebuild the whole app.
@@ -209,6 +226,9 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     _clock.observe(replica.maxHlc);
     _engine.restorePending(pending);
 
+    _backupKeep = await _local.backupKeep();
+    _backups = await _local.listBackups();
+
     _initialised = true;
     _invalidate();
     _loading = false;
@@ -338,6 +358,9 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
         notifyListeners();
       }
       try {
+        // Taken before the pull, so it holds this device's own view in case
+        // what comes down from the server turns out to be wrong.
+        await _backup('Before sync');
         final report = await _engine.sync();
         _hasSynced = true;
         if (report.opsPulled > 0 || report.opsPushed > 0 || report.compacted) {
@@ -774,6 +797,9 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
       _syncing = true;
       notifyListeners();
       try {
+        // Everything local, unsynced edits included, is about to be thrown
+        // away.
+        await _backup('Before force download', force: true);
         final deviceId = _engine.deviceId;
         final engine = SyncEngine(
           store: _remote,
@@ -799,6 +825,65 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
       debugPrint('Sync chain error: $e');
     });
     return next;
+  }
+
+  /// Back up the replica if one is due. [force] skips the interval check,
+  /// but an unchanged or empty replica is never backed up: a backup of
+  /// nothing would push a real one out of the retained set.
+  Future<void> _backup(String reason, {bool force = false}) async {
+    if (!force && _backedUpThisSession) {
+      final last = _backups.firstOrNull;
+      if (last != null &&
+          DateTime.now().difference(last.createdAt) < _backupInterval) {
+        return;
+      }
+    }
+    if (!_replica.entities.values.any((e) => !e.isDeleted)) return;
+    try {
+      final saved = await _local.saveBackup(_replica, reason: reason);
+      _backedUpThisSession = true;
+      if (saved != null) await _local.pruneBackups(_backupKeep);
+      await _reloadBackups();
+    } catch (e) {
+      debugPrint('Backup failed: $e');
+    }
+  }
+
+  Future<void> _reloadBackups() async {
+    _backups = await _local.listBackups();
+    notifyListeners();
+  }
+
+  Future<void> backupNow() => _backup('Manual', force: true);
+
+  Future<void> deleteBackup(int id) async {
+    await _local.deleteBackup(id);
+    await _reloadBackups();
+  }
+
+  Future<void> setBackupPinned(int id, bool pinned) async {
+    await _local.setBackupPinned(id, pinned);
+    await _reloadBackups();
+  }
+
+  Future<void> setBackupKeep(int keep) async {
+    _backupKeep = keep;
+    await _local.setBackupKeep(keep);
+    await _local.pruneBackups(keep);
+    await _reloadBackups();
+  }
+
+  /// Restore backup [id]. See [restoreOps] for what [replaceAll] means.
+  ///
+  /// Goes out as ordinary edits, so it syncs to every device. The current
+  /// state is backed up first, so a restore can itself be undone. Returns
+  /// the number of changes made.
+  Future<int> restoreBackup(int id, {required bool replaceAll}) async {
+    final backup = await _local.loadBackup(id);
+    await _backup('Before restore', force: true);
+    final ops = restoreOps(_replica, backup, _clock, replaceAll: replaceAll);
+    _record(ops);
+    return ops.length;
   }
 
   /// What a fresh device would have to download, for the settings screen.
