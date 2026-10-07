@@ -33,17 +33,20 @@ class DropboxStore implements RemoteStore {
     final out = List<Uint8List?>.filled(paths.length, null);
     var next = 0;
 
+    // Only a file Dropbox says does not exist comes back null. Any other
+    // failure propagates: reporting it as "absent" let a sync carry on with
+    // a partial view, and a compaction from that view published a base
+    // without the unread data and then deleted the log that still held it.
+    Object? failure;
     Future<void> worker() async {
-      while (true) {
+      while (failure == null) {
         final i = next++;
         if (i >= paths.length) return;
         try {
           out[i] = await _dropbox.downloadBinaryFile(paths[i]);
         } catch (e) {
-          // A missing or unreadable file is reported as null; the caller
-          // decides whether that is fatal. Segments can legitimately vanish
-          // when another device compacts mid-read.
           debugPrint('readMany: ${paths[i]} failed: $e');
+          failure ??= e;
         }
       }
     }
@@ -53,6 +56,7 @@ class DropboxStore implements RemoteStore {
       (_) => worker(),
     );
     await Future.wait(workers);
+    if (failure case final e?) throw e;
     return out;
   }
 
@@ -107,7 +111,7 @@ extension DropboxSyncApi on DropboxService {
       },
     );
 
-    if (response.statusCode == 409) return null; // not found
+    if (DropboxService.isNotFound(response)) return null;
     if (response.statusCode != 200) {
       throw Exception(
         'Dropbox download failed (${response.statusCode}): ${response.body}',

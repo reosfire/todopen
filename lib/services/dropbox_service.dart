@@ -281,7 +281,7 @@ class DropboxService {
       },
     );
 
-    if (response.statusCode == 409) return null;
+    if (isNotFound(response)) return null;
     if (response.statusCode != 200) {
       throw Exception(
         'Dropbox download failed (${response.statusCode}): '
@@ -291,6 +291,14 @@ class DropboxService {
 
     return response.bodyBytes;
   }
+
+  /// Whether [response] is Dropbox saying the path does not exist.
+  ///
+  /// A 409 alone is not enough: Dropbox uses it for every endpoint-specific
+  /// error, and the sync engine must not mistake an unreadable file for an
+  /// absent one.
+  static bool isNotFound(http.Response response) =>
+      response.statusCode == 409 && response.body.contains('not_found');
 
   /// Delete the file at [remotePath]. Silently succeeds if the file does
   /// not exist.

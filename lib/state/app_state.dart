@@ -37,6 +37,11 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   bool _syncing = false;
   bool _initialised = false;
 
+  /// Whether this device's replica has ever been merged with the server.
+  /// Until it has, an empty replica means "not downloaded yet", not "the
+  /// user has no lists".
+  bool _hasSynced = false;
+
   /// Debounce so a burst of edits becomes one segment upload.
   Timer? _pushTimer;
   static const _pushDebounce = Duration(milliseconds: 600);
@@ -165,18 +170,25 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     // restarting cannot produce an op that sorts before earlier work.
     _clock.observe(savedState.lastHlc);
 
-    final replica = await _local.loadReplica();
+    final (:replica, :restored) = await _local.loadReplica();
     _engine = SyncEngine(
       store: DropboxStore(dropboxService),
       clock: _clock,
       deviceId: deviceId,
       replica: replica,
     );
-    _engine.restoreProgress(
-      baseGen: savedState.baseGen,
-      chunks: savedState.loadedChunks,
-      segments: savedState.appliedSegments,
-    );
+    // Progress is only meaningful alongside the replica it was saved with.
+    // Without one, everything remote must be fetched again.
+    if (restored) {
+      _engine.restoreProgress(
+        baseGen: savedState.baseGen,
+        chunks: savedState.loadedChunks,
+        segments: savedState.appliedSegments,
+      );
+    }
+    _hasSynced =
+        restored &&
+        (savedState.baseGen >= 0 || savedState.appliedSegments.isNotEmpty);
     // The replica snapshot is written lazily, so it can trail the pending
     // log by the last few edits. Replaying the log is always safe (applying
     // an op twice is a no-op) and brings the snapshot back up to date.
@@ -187,7 +199,6 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
 
     _initialised = true;
     _invalidate();
-    _ensureDefaults();
     _loading = false;
     notifyListeners();
 
@@ -195,6 +206,11 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     await dropboxService.init();
     _initDeepLinks();
     WidgetsBinding.instance.addObserver(this);
+
+    // A device that has never synced gets its default list after the first
+    // pull. Creating it now would give every fresh install its own "Inbox"
+    // alongside the real one, and new tasks could land in the wrong copy.
+    if (_hasSynced || !dropboxService.isSignedIn) _ensureDefaults();
 
     if (dropboxService.isSignedIn) {
       unawaited(_syncNow());
@@ -271,14 +287,17 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _persistLocal() async {
+  /// Save the replica and pending log. Returns whether both reached disk.
+  Future<bool> _persistLocal() async {
     _snapshotTimer?.cancel();
     _snapshotTimer = null;
     try {
       await _local.saveReplica(_replica);
       await _local.savePending(_pendingOps(), _engine.deviceId);
+      return true;
     } catch (e) {
       debugPrint('Local persist failed: $e');
+      return false;
     }
   }
 
@@ -307,19 +326,25 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
       }
       try {
         final report = await _engine.sync();
+        _hasSynced = true;
         if (report.opsPulled > 0 || report.opsPushed > 0 || report.compacted) {
           _invalidate();
-          _ensureDefaults();
           notifyListeners();
         }
-        await _persistLocal();
-        await _saveSyncState();
+        _ensureDefaults();
+        // Progress is saved only once the replica it describes is on disk.
+        // Saved ahead of it, a reload would skip files the replica never
+        // received.
+        if (await _persistLocal()) await _saveSyncState();
       } on DropboxAuthException catch (e) {
         // Auth is gone; _handleAuthLost has already paused sync. Pending ops
         // stay queued and upload once the user signs in again.
         debugPrint('Sync stopped: $e');
+        _ensureDefaults();
       } catch (e) {
         debugPrint('Sync failed: $e');
+        // Offline on first launch: give the user somewhere to put tasks.
+        _ensureDefaults();
       } finally {
         if (showSpinner) {
           _syncing = false;
@@ -721,47 +746,46 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
 
   Future<void> sync() => _syncNow(showSpinner: true);
 
-  /// Re-upload everything by compacting a fresh base from local state.
-  Future<void> forceUpload() async {
-    if (!dropboxService.isSignedIn) return;
-    _syncing = true;
-    notifyListeners();
-    try {
-      await _engine.sync();
-      await _saveSyncState();
-    } on DropboxAuthException catch (e) {
-      debugPrint('Force upload stopped: $e');
-    } catch (e) {
-      debugPrint('Force upload failed: $e');
-    }
-    _syncing = false;
-    notifyListeners();
-  }
+  /// Push local changes now.
+  ///
+  /// Runs through [_syncNow] like every other cycle. Calling the engine
+  /// directly let it overlap a background sync on the same pending queue:
+  /// both uploaded the same ops, and each then acknowledged its count from
+  /// the front, dropping edits recorded in between.
+  Future<void> forceUpload() => _syncNow(showSpinner: true);
 
   /// Discard local state and rebuild it from the server.
-  Future<void> forceDownload() async {
-    if (!dropboxService.isSignedIn) return;
-    _syncing = true;
-    notifyListeners();
-    try {
-      final deviceId = _engine.deviceId;
-      _engine = SyncEngine(
-        store: DropboxStore(dropboxService),
-        clock: _clock,
-        deviceId: deviceId,
-      );
-      await _engine.hydrate();
-      _invalidate();
-      _ensureDefaults();
-      await _persistLocal();
-      await _saveSyncState();
-    } on DropboxAuthException catch (e) {
-      debugPrint('Force download stopped: $e');
-    } catch (e) {
-      debugPrint('Force download failed: $e');
-    }
-    _syncing = false;
-    notifyListeners();
+  Future<void> forceDownload() {
+    final next = _syncChain.then((_) async {
+      if (!dropboxService.isSignedIn) return;
+      _syncing = true;
+      notifyListeners();
+      try {
+        final deviceId = _engine.deviceId;
+        final engine = SyncEngine(
+          store: DropboxStore(dropboxService),
+          clock: _clock,
+          deviceId: deviceId,
+        );
+        await engine.hydrate();
+        _engine = engine;
+        _hasSynced = true;
+        _invalidate();
+        _ensureDefaults();
+        if (await _persistLocal()) await _saveSyncState();
+      } on DropboxAuthException catch (e) {
+        debugPrint('Force download stopped: $e');
+      } catch (e) {
+        debugPrint('Force download failed: $e');
+      } finally {
+        _syncing = false;
+        notifyListeners();
+      }
+    });
+    _syncChain = next.catchError((Object e) {
+      debugPrint('Sync chain error: $e');
+    });
+    return next;
   }
 
   /// What a fresh device would have to download, for the settings screen.

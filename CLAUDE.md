@@ -56,7 +56,12 @@ Correctness rests on five things:
   `WriteMode.update`, which only succeeds if the file's rev is unchanged. A
   device that loses the race re-reads, replays what it missed, rebases its own
   work and retries, so no write is silently dropped. Segments and base chunks
-  are immutable, so nothing else can conflict.
+  are immutable, and their names are unique per writer (segments carry the
+  device id, chunk `gen`s a random suffix per compaction attempt), so a CAS
+  loser's late upload can never replace a published file. A pull that cannot
+  read a referenced file must abort, never carry on as if it were absent: a
+  compaction from a partial replica publishes a base without the unread data
+  and then deletes the log that still held it.
 - **Hybrid logical clocks.** Ordering uses `(physical, counter, deviceId)`
   rather than wall time, so clock skew cannot invert two edits and every device
   resolves a conflict the same way.

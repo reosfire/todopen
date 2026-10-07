@@ -43,10 +43,17 @@ class LocalStore {
     await _putBlob(_keyReplica, chunk.encode());
   }
 
-  Future<Replica> loadReplica() async {
+  /// The saved replica, and whether there was one to restore.
+  ///
+  /// When [restored] is false the replica is empty, and any saved
+  /// [SyncState] describes data it does not hold: the caller must resync
+  /// from scratch. Restoring that progress anyway would skip every remote
+  /// file as already merged, leave this device believing it is current with
+  /// nothing in it, and its next compaction would publish that emptiness.
+  Future<({Replica replica, bool restored})> loadReplica() async {
     final bytes = await _getBlob(_keyReplica);
     final replica = Replica();
-    if (bytes == null) return replica;
+    if (bytes == null) return (replica: replica, restored: false);
     try {
       replica.loadChunk(Chunk.decode(bytes));
     } catch (e) {
@@ -54,9 +61,9 @@ class LocalStore {
       // source of truth, so start empty and re-hydrate rather than
       // refusing to launch.
       debugPrint('Local replica corrupt, starting empty: $e');
-      return Replica();
+      return (replica: Replica(), restored: false);
     }
-    return replica;
+    return (replica: replica, restored: true);
   }
 
   // ───── Pending (unsynced) ops ─────

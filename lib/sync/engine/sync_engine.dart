@@ -111,6 +111,12 @@ class SyncEngine {
   /// changed; only this per-shard identity does.
   final Map<int, String> _loadedChunks = {};
 
+  /// Shards whose published file did not match its manifest entry. The next
+  /// compaction rewrites them instead of carrying them over.
+  final Set<int> _damagedShards = {};
+
+  final Random _rng = Random();
+
   /// Ops made locally that are not yet on the server.
   final List<Op> _pending = [];
 
@@ -226,7 +232,19 @@ class SyncEngine {
     var bytesDown = 0;
     var bytesUp = 0;
     var pulled = 0;
+    var pushed = 0;
     var retried = false;
+
+    // A segment whose manifest CAS came back as a conflict. That answer can
+    // be wrong: when the first attempt commits but its response is lost, the
+    // transport's retry sees the rev already moved and reports a conflict
+    // for our own write. Deleting the file then would leave the manifest
+    // pointing at nothing, so it is resolved against the next manifest read.
+    ({SegmentRef ref, int count})? unconfirmed;
+
+    // Rev at which a referenced file was found missing, so a file that is
+    // missing twice from an unchanged manifest is accepted as truly gone.
+    String? missingAtRev;
 
     // Retry loop: losing the manifest CAS means someone else committed
     // between our read and our write, so we rebase and try again.
@@ -241,10 +259,40 @@ class SyncEngine {
       _manifest = manifest;
       _manifestRev = head?.rev;
 
+      if (unconfirmed != null) {
+        final u = unconfirmed;
+        unconfirmed = null;
+        if (manifest.segments.any((s) => s.path == u.ref.path)) {
+          // The "conflict" was our own commit. Those ops are on the server.
+          _appliedSegments.add(u.ref.path);
+          _pending.removeRange(0, u.count);
+          pushed += u.count;
+        } else {
+          try {
+            await store.delete(u.ref.path);
+          } catch (_) {
+            // Leaving garbage behind is survivable; compaction GCs it.
+          }
+        }
+      }
+
       final pullStats = await _pullInto(manifest);
       requests += pullStats.requests;
       bytesDown += pullStats.bytes;
       pulled += pullStats.ops;
+
+      // Something the manifest references could not be found. Usually a
+      // concurrent compaction just collected it and the manifest has moved
+      // on, so re-read rather than build on a partial view. Compacting from
+      // a replica that is missing data would publish a base without it and
+      // then delete the log that still had it. Compaction commits before it
+      // collects, so a file still missing under an unchanged manifest is
+      // gone for good and there is nothing left to protect.
+      if (pullStats.missing > 0 && missingAtRev != _manifestRev) {
+        missingAtRev = _manifestRev;
+        retried = true;
+        continue;
+      }
 
       if (_pending.isEmpty) {
         // Nothing to push. Compaction may still be worthwhile.
@@ -254,6 +302,7 @@ class SyncEngine {
           bytesUp += c.bytes;
           if (c.committed) {
             return SyncReport(
+              opsPushed: pushed,
               opsPulled: pulled,
               bytesDown: bytesDown,
               bytesUp: bytesUp,
@@ -266,6 +315,7 @@ class SyncEngine {
           continue; // lost the CAS; re-read and retry
         }
         return SyncReport(
+          opsPushed: pushed,
           opsPulled: pulled,
           bytesDown: bytesDown,
           bytesUp: bytesUp,
@@ -306,15 +356,11 @@ class SyncEngine {
         requests++;
         bytesUp += next.encode().length;
       } on CasConflict {
-        // Someone committed first. Our segment is orphaned under a sequence
-        // number the winner may now have claimed, so it must be gone before
-        // the retry writes there again — await rather than fire-and-forget.
+        // Probably someone committed first, in which case our segment is
+        // orphaned and is deleted once the next manifest read confirms it is
+        // not referenced (see [unconfirmed]).
         retried = true;
-        try {
-          await store.delete(ref.path);
-        } catch (_) {
-          // Leaving garbage behind is survivable; a later compaction GCs it.
-        }
+        unconfirmed = (ref: ref, count: segment.ops.length);
         continue;
       }
 
@@ -323,8 +369,8 @@ class SyncEngine {
       // Only what went into the segment is acknowledged. Edits recorded
       // while the upload was in flight were appended after it and are still
       // unsent; clearing the whole queue here dropped them for good.
-      final pushed = segment.ops.length;
-      _pending.removeRange(0, pushed);
+      _pending.removeRange(0, segment.ops.length);
+      pushed += segment.ops.length;
 
       var compacted = false;
       if (allowCompaction && _shouldCompact(next)) {
@@ -350,12 +396,19 @@ class SyncEngine {
 
   /// Download whatever of [manifest] this replica has not yet seen and merge
   /// it in, in HLC order.
-  Future<({int requests, int bytes, int ops})> _pullInto(
+  ///
+  /// [missing] counts referenced files that came back absent. Their content
+  /// is not in [replica], so the caller must not treat the pull as complete.
+  /// A failed read throws instead: it says nothing about the file, and
+  /// carrying on as if it were absent is how a transient network error ends
+  /// up erasing data.
+  Future<({int requests, int bytes, int ops, int missing})> _pullInto(
     Manifest manifest,
   ) async {
     var requests = 0;
     var bytes = 0;
     var ops = 0;
+    var missing = 0;
 
     // A new base generation means compaction folded log history into the
     // base, so the segments we had applied are now represented there.
@@ -382,33 +435,52 @@ class SyncEngine {
       requests += wanted.length;
       for (var i = 0; i < wanted.length; i++) {
         final b = blobs[i];
-        if (b == null) continue;
+        final ref = wanted[i];
+        if (b == null) {
+          missing++;
+          continue;
+        }
         bytes += b.length;
+        // Merging is monotone, so the content is worth keeping either way.
         replica.loadChunk(Chunk.decode(b));
-        _loadedChunks[wanted[i].shard] = _chunkIdentity(wanted[i]);
+        if (b.length == ref.size && Crc32c.compute(b) == ref.crc) {
+          _loadedChunks[ref.shard] = _chunkIdentity(ref);
+          _damagedShards.remove(ref.shard);
+        } else {
+          // The file is not the one the manifest describes. Older builds
+          // named chunks by generation alone, so two devices compacting at
+          // once wrote the same path and the CAS loser could overwrite the
+          // winner's chunk after the fact. Whatever only the winner had is
+          // then missing from the file, so the shard is republished from
+          // this replica rather than trusted.
+          _damagedShards.add(ref.shard);
+        }
       }
     }
 
     // Fetch segments we have not applied.
-    final missing =
+    final unapplied =
         manifest.segments
             .where((s) => !_appliedSegments.contains(s.path))
             .toList()
           ..sort((a, b) => a.seq.compareTo(b.seq));
-    if (missing.isNotEmpty) {
-      final blobs = await store.readMany(missing.map((s) => s.path).toList());
-      requests += missing.length;
+    if (unapplied.isNotEmpty) {
+      final blobs = await store.readMany(unapplied.map((s) => s.path).toList());
+      requests += unapplied.length;
 
       // Collect every op first, then apply in HLC order. Applying segment by
       // segment would be wrong: two devices' segments interleave in time.
       final incoming = <Op>[];
-      for (var i = 0; i < missing.length; i++) {
+      for (var i = 0; i < unapplied.length; i++) {
         final b = blobs[i];
-        if (b == null) continue; // GC'd mid-flight; manifest will catch up
+        if (b == null) {
+          missing++; // GC'd mid-flight; the manifest will have moved on
+          continue;
+        }
         bytes += b.length;
         final seg = Segment.decode(b);
         incoming.addAll(seg.ops);
-        _appliedSegments.add(missing[i].path);
+        _appliedSegments.add(unapplied[i].path);
       }
       incoming.sort((a, b) => a.hlc.compareTo(b.hlc));
       for (final op in incoming) {
@@ -418,10 +490,11 @@ class SyncEngine {
       ops = incoming.length;
     }
 
-    return (requests: requests, bytes: bytes, ops: ops);
+    return (requests: requests, bytes: bytes, ops: ops, missing: missing);
   }
 
   bool _shouldCompact(Manifest m) {
+    if (_damagedShards.isNotEmpty) return true;
     if (m.segments.length >= policy.maxSegments) return true;
     final logBytes = m.segmentBytes;
     if (logBytes >= policy.maxLogBytes) return true;
@@ -447,6 +520,13 @@ class SyncEngine {
     var requests = 0;
     var bytesUp = 0;
     final newGen = manifest.baseGen + 1;
+    // Chunk filenames must be unique per compaction *attempt*, not just per
+    // generation. Two devices compacting the same manifest both target
+    // `newGen`; with a shared name the CAS loser's upload can land after the
+    // winner's and silently replace the published chunk. The random low
+    // bits keep the names apart. Multiplication rather than a shift: on the
+    // web ints are doubles and shifts truncate to 32 bits.
+    final chunkGen = newGen * _chunkGenSalt + _rng.nextInt(_chunkGenSalt);
 
     // Group current live state by shard.
     final byShard = <int, List<ReplicatedEntity>>{};
@@ -496,14 +576,17 @@ class SyncEngine {
       // (authored earlier on a device that synced later), leaving maxHlc
       // unchanged while the content differs — silently dropping the edit for
       // every other device.
-      if (prev != null && prev.size == bytes.length && prev.crc == digest) {
+      if (prev != null &&
+          prev.size == bytes.length &&
+          prev.crc == digest &&
+          !_damagedShards.contains(shard)) {
         newChunks.add(prev);
         continue;
       }
 
       final ref = ChunkRef(
         shard: shard,
-        gen: newGen,
+        gen: chunkGen,
         size: bytes.length,
         maxHlc: chunk.maxHlc,
         crc: digest,
@@ -544,6 +627,7 @@ class SyncEngine {
       ..clear()
       ..addEntries(newChunks.map((c) => MapEntry(c.shard, _chunkIdentity(c))));
     _appliedSegments.clear();
+    _damagedShards.clear();
 
     // Garbage-collect superseded files. Best effort: a failure here costs
     // storage, never correctness.
@@ -570,6 +654,9 @@ class SyncEngine {
 
   static final _zeroUuid = Uuid128.fromBytes(Uint8List(16));
 
+  /// Spread of random chunk-name suffixes within one generation.
+  static const _chunkGenSalt = 1 << 20;
+
   /// Cold start: load everything from scratch into an empty replica.
   Future<SyncReport> hydrate() async {
     final head = await store.read(manifestPath);
@@ -584,6 +671,7 @@ class SyncEngine {
     _loadedBaseGen = -1;
     _loadedChunks.clear();
     _appliedSegments.clear();
+    _damagedShards.clear();
 
     final stats = await _pullInto(manifest);
     return SyncReport(

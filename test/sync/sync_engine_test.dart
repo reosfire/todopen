@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:todopen/models/task.dart';
 import 'package:todopen/sync/domain_mapper.dart';
 import 'package:todopen/sync/engine/sync_engine.dart';
+import 'package:todopen/sync/format/crc32c.dart';
 import 'package:todopen/sync/format/manifest.dart';
 import 'package:todopen/sync/model/hlc.dart';
 import 'package:todopen/sync/model/ops.dart';
@@ -380,9 +381,12 @@ void main() {
       final gen2 = Manifest.decode(store.files[SyncEngine.manifestPath]!);
       expect(gen2.baseGen, greaterThan(gen1.baseGen));
 
-      // Chunks whose content did not change keep their old generation,
-      // proving they were carried by reference rather than rewritten.
-      final carried = gen2.chunks.where((c) => c.gen < gen2.baseGen).toList();
+      // Chunks whose content did not change keep their old file, proving
+      // they were carried by reference rather than rewritten.
+      final before = {for (final c in gen1.chunks) c.path};
+      final carried = gen2.chunks
+          .where((c) => before.contains(c.path))
+          .toList();
       expect(
         carried,
         isNotEmpty,
@@ -694,6 +698,176 @@ void main() {
           members,
           reason: 'no task may be lost or duplicated by a concurrent reorder',
         );
+      },
+    );
+  });
+
+  group('data loss regressions', () {
+    Manifest manifestOf(FakeStore store) =>
+        Manifest.decode(store.files[SyncEngine.manifestPath]!);
+
+    /// Every file the manifest names exists and is the exact file described.
+    void expectConsistent(FakeStore store) {
+      final m = manifestOf(store);
+      for (final s in m.segments) {
+        expect(store.files.containsKey(s.path), isTrue, reason: s.path);
+      }
+      for (final c in m.chunks) {
+        final b = store.files[c.path];
+        expect(b, isNotNull, reason: c.path);
+        expect(b!.length, c.size, reason: c.path);
+        expect(Crc32c.compute(b), c.crc, reason: c.path);
+      }
+    }
+
+    Future<SyncEngine> freshView(FakeStore store) async {
+      final fresh = engineFor(store, 99);
+      await fresh.hydrate();
+      return fresh;
+    }
+
+    test('a failed segment read aborts the sync instead of compacting '
+        'without it', () async {
+      final store = FakeStore();
+      const eager = SyncPolicy(maxSegments: 2);
+      final a = engineFor(store, 1);
+      final b = engineFor(store, 2, policy: eager);
+      addTask(a, uid(1), 'seed');
+      await a.sync();
+      await b.sync();
+
+      for (var i = 2; i <= 4; i++) {
+        addTask(a, uid(i), 'task $i');
+        await a.sync(allowCompaction: false);
+      }
+      final segs = manifestOf(store).segments;
+      expect(segs, hasLength(3));
+      store.failNextRead.add(segs[1].path);
+
+      // Previously the failure read as "file absent", and b, now over its
+      // segment budget, compacted a base without task 3 and deleted the
+      // segment that still held it.
+      await expectLater(b.sync(), throwsA(anything));
+      expect(manifestOf(store).segments, hasLength(3));
+
+      await b.sync();
+      final fresh = await freshView(store);
+      for (var i = 1; i <= 4; i++) {
+        expect(fresh.replica.get(EntityKind.task, uid(i)), isNotNull);
+      }
+      expectConsistent(store);
+    });
+
+    test('a failed chunk read aborts the sync instead of republishing '
+        'the shard without it', () async {
+      final store = FakeStore();
+      const eager = SyncPolicy(maxSegments: 1);
+      final a = engineFor(store, 1, policy: eager);
+      final b = engineFor(store, 2, policy: eager);
+      addTask(a, uid(1), 'seed');
+      await a.sync();
+      await b.sync();
+
+      // a's edit is folded straight into a new base, so b can only get it
+      // from the chunk.
+      addTask(a, uid(2), 'only in the base');
+      await a.sync();
+      expect(manifestOf(store).segments, isEmpty);
+      for (final c in manifestOf(store).chunks) {
+        store.failNextRead.add(c.path);
+      }
+
+      addTask(b, uid(3), 'b work');
+      await expectLater(b.sync(), throwsA(anything));
+      store.failNextRead.clear();
+      await b.sync();
+
+      final fresh = await freshView(store);
+      expect(fresh.replica.get(EntityKind.task, uid(2)), isNotNull);
+      expect(fresh.replica.get(EntityKind.task, uid(3)), isNotNull);
+      expectConsistent(store);
+    });
+
+    test('two devices compacting at once cannot overwrite each other\'s '
+        'chunks', () async {
+      final store = FakeStore();
+      const eager = SyncPolicy(maxSegments: 1);
+      final a = engineFor(store, 1, policy: eager);
+      final b = engineFor(store, 2, policy: eager);
+      addTask(a, uid(1), 'seed');
+      await a.sync();
+      await b.sync();
+
+      addTask(a, uid(2), 'from a');
+      addTask(b, uid(3), 'from b');
+
+      // a pushes, starts compacting, and before its chunk upload lands b
+      // pushes, compacts the same generation and wins the CAS. a's upload
+      // then completes. With generation-only names it replaced b's
+      // published chunk with one lacking b's task, whose segment b had
+      // already collected.
+      store.beforeOverwrite = (path) async {
+        store.beforeOverwrite = null;
+        await b.sync();
+      };
+      await a.sync();
+      store.beforeOverwrite = null;
+
+      expectConsistent(store);
+      final fresh = await freshView(store);
+      expect(fresh.replica.get(EntityKind.task, uid(2)), isNotNull);
+      expect(fresh.replica.get(EntityKind.task, uid(3)), isNotNull);
+    });
+
+    test(
+      'a CAS reported as lost after it committed keeps its segment',
+      () async {
+        final store = FakeStore();
+        final a = engineFor(store, 1);
+        addTask(a, uid(1), 'seed');
+        await a.sync();
+
+        addTask(a, uid(2), 'second');
+        store.commitThenConflictNextCas = true;
+        await a.sync(allowCompaction: false);
+
+        expect(a.pendingOpCount, 0);
+        expectConsistent(store);
+        final fresh = await freshView(store);
+        expect(fresh.replica.get(EntityKind.task, uid(2)), isNotNull);
+      },
+    );
+
+    test(
+      'a chunk that does not match its manifest entry is republished',
+      () async {
+        final store = FakeStore();
+        final a = engineFor(store, 1, policy: const SyncPolicy(maxSegments: 1));
+        final b = engineFor(store, 2);
+        addTask(a, uid(1), 'seed');
+        await a.sync();
+        await b.sync();
+        final oldChunks = {
+          for (final c in manifestOf(store).chunks)
+            c.shard: store.files[c.path]!,
+        };
+
+        addTask(a, uid(2), 'second');
+        await a.sync(allowCompaction: false);
+        await b.sync(allowCompaction: false);
+        await a.sync(); // folds task 2 into a new base
+
+        // Damage as left by the old same-name race: the published file is a
+        // self-consistent chunk, just not the one the manifest describes.
+        for (final c in manifestOf(store).chunks) {
+          if (oldChunks[c.shard] case final old?) store.files[c.path] = old;
+        }
+
+        await b.sync();
+
+        expectConsistent(store);
+        final fresh = await freshView(store);
+        expect(fresh.replica.get(EntityKind.task, uid(2)), isNotNull);
       },
     );
   });

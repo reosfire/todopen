@@ -26,6 +26,15 @@ class FakeStore implements RemoteStore {
   /// Paths whose next read should fail, simulating a flaky network.
   final Set<String> failNextRead = {};
 
+  /// When set, invoked before each overwrite (chunk upload), so a test can
+  /// let another device run between two uploads.
+  Future<void> Function(String path)? beforeOverwrite;
+
+  /// When true, the next CAS commits and then reports a conflict anyway, as
+  /// happens when the response to a committed write is lost and the retry
+  /// finds the rev already moved.
+  bool commitThenConflictNextCas = false;
+
   void resetCounters() {
     reads = writes = deletes = bytesRead = bytesWritten = 0;
   }
@@ -47,6 +56,9 @@ class FakeStore implements RemoteStore {
     final out = <Uint8List?>[];
     for (final p in paths) {
       reads++;
+      if (failNextRead.remove(p)) {
+        throw Exception('simulated network failure reading $p');
+      }
       final b = files[p];
       if (b != null) bytesRead += b.length;
       out.add(b);
@@ -67,6 +79,7 @@ class FakeStore implements RemoteStore {
 
   @override
   Future<void> overwrite(String path, Uint8List bytes) async {
+    await beforeOverwrite?.call(path);
     writes++;
     bytesWritten += bytes.length;
     files[path] = bytes;
@@ -89,6 +102,10 @@ class FakeStore implements RemoteStore {
     files[path] = bytes;
     final rev = ++_revCounter;
     _revs[path] = rev;
+    if (commitThenConflictNextCas) {
+      commitThenConflictNextCas = false;
+      throw CasConflict(path);
+    }
     return rev.toString();
   }
 
