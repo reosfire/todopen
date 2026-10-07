@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:app_links/app_links.dart';
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
 import '../models/folder.dart';
@@ -9,6 +10,7 @@ import '../models/tag.dart';
 import '../models/task.dart';
 import '../models/task_list.dart';
 import '../services/dropbox_service.dart';
+import '../sync/activity_store.dart';
 import '../sync/domain_mapper.dart';
 import '../sync/dropbox_store.dart';
 import '../sync/engine/replica.dart';
@@ -28,6 +30,12 @@ import '../utils/uuid128.dart';
 class AppState extends ChangeNotifier with WidgetsBindingObserver {
   final DropboxService dropboxService = DropboxService();
   final LocalStore _local = LocalStore();
+
+  /// Every engine talks to Dropbox through this, so the UI can show when a
+  /// transfer is in flight.
+  late final ActivityStore _remote = ActivityStore(
+    DropboxStore(dropboxService),
+  );
   final _appLinks = AppLinks();
 
   late SyncEngine _engine;
@@ -54,6 +62,10 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   String? _longpollCursor;
 
   bool get loading => _loading;
+
+  /// Whether data is going up or coming down right now. A separate
+  /// listenable so a request starting does not rebuild the whole app.
+  ValueListenable<SyncActivity> get syncActivity => _remote.activity;
   bool get syncing => _syncing;
   bool get isSignedIn => dropboxService.isSignedIn;
 
@@ -172,7 +184,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
 
     final (:replica, :restored) = await _local.loadReplica();
     _engine = SyncEngine(
-      store: DropboxStore(dropboxService),
+      store: _remote,
       clock: _clock,
       deviceId: deviceId,
       replica: replica,
@@ -225,6 +237,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     _pushTimer?.cancel();
     if (_snapshotTimer != null) unawaited(_persistLocal());
     WidgetsBinding.instance.removeObserver(this);
+    _remote.dispose();
     super.dispose();
   }
 
@@ -763,7 +776,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
       try {
         final deviceId = _engine.deviceId;
         final engine = SyncEngine(
-          store: DropboxStore(dropboxService),
+          store: _remote,
           clock: _clock,
           deviceId: deviceId,
         );

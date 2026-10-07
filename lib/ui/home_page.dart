@@ -16,6 +16,7 @@ import 'folder_editor_dialog.dart';
 import '../models/smart_list.dart';
 import 'smart_list_editor_dialog.dart';
 import 'tag_manager_dialog.dart';
+import 'sync_indicator.dart';
 import 'sync_settings_page.dart';
 import 'search_view.dart';
 import 'accent_theme.dart';
@@ -606,23 +607,7 @@ class _HomePageState extends State<HomePage> {
       title: Text(title),
       scrolledUnderElevation: 0,
       backgroundColor: Theme.of(context).colorScheme.surface,
-      actions: [
-        if (state.syncing)
-          const Padding(
-            padding: EdgeInsets.all(12),
-            child: SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            ),
-          )
-        else if (state.isSignedIn)
-          IconButton(
-            icon: const Icon(Icons.sync),
-            onPressed: () => state.sync(),
-            tooltip: 'Sync',
-          ),
-      ],
+      actions: [SyncIndicator(state: state)],
     );
   }
 
@@ -655,18 +640,7 @@ class _HomePageState extends State<HomePage> {
         children: [
           Text(title, style: Theme.of(context).textTheme.titleLarge),
           const Spacer(),
-          if (state.syncing)
-            const SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            )
-          else if (state.isSignedIn)
-            IconButton(
-              icon: const Icon(Icons.sync),
-              onPressed: () => state.sync(),
-              tooltip: 'Sync',
-            ),
+          SyncIndicator(state: state),
         ],
       ),
     );
